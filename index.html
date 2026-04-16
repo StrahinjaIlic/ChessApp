@@ -404,7 +404,7 @@
         stockfish.postMessage('setoption name MultiPV value '+numPV);
         stockfish.postMessage('go depth '+depth);
     }
-    function getDepth(){var l=parseInt($('sel-diff').value);return DMAP[l]||10}
+    function getDepth(){var l=parseInt($('sel-diff').value);return Math.max(DMAP[l]||10,12)}
 
     // Eval bar
     function updateEvalBar(){
