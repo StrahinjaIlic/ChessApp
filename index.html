@@ -1,0 +1,1064 @@
+<!DOCTYPE html>
+<html lang="sr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Šahovski Trener</title>
+    <style>
+        :root{--bs:560px;--sq:70px;--pc:58px}
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{background:#161512;color:#bababa;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;overflow-x:hidden}
+
+        header{width:100%;padding:10px 24px;background:#1a1916;border-bottom:1px solid #2b2926;display:flex;align-items:center;gap:10px;flex-shrink:0}
+        header .logo{font-size:1.4rem}
+        header h1{font-size:1.15rem;color:#e0e0e0;font-weight:600}
+
+        .main{display:flex;gap:20px;padding:16px 24px;width:100%;align-items:flex-start;justify-content:center}
+
+        .player-info{display:flex;align-items:center;gap:8px;padding:5px 2px;font-size:.85rem;min-height:28px;width:calc(var(--bs) + 17px)}
+        .player-info .icon{width:22px;height:22px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:.65rem;font-weight:700;color:#fff;flex-shrink:0}
+        .player-info .icon.wi{background:#999}
+        .player-info .icon.bi{background:#333;border:1px solid #555}
+        .player-info .name{font-weight:600;color:#ccc;font-size:.82rem}
+        .player-info .captured{margin-left:auto;font-size:.75rem;letter-spacing:1px;color:#aaa}
+        .player-info .adv{color:#bababa;font-weight:600;font-size:.75rem;margin-left:3px}
+
+        .board-sec{flex-shrink:0;flex-grow:0}
+        .board-wrap{position:relative;display:flex;gap:0}
+        .eval-bar{width:14px;margin-right:3px;border-radius:3px;overflow:hidden;background:#333;position:relative;flex-shrink:0;height:var(--bs)}
+        .eval-fill{position:absolute;bottom:0;width:100%;background:#e8e8e8;transition:height .6s ease;height:50%}
+        .eval-lbl{position:absolute;width:100%;text-align:center;font-size:.5rem;font-weight:700;z-index:2;pointer-events:none}
+        .eval-lbl.top{top:3px;color:#eee}
+        .eval-lbl.bot{bottom:3px;color:#333}
+
+        .board{display:grid;grid-template-columns:repeat(8,var(--sq));grid-template-rows:repeat(8,var(--sq));width:var(--bs);height:var(--bs);border-radius:2px;overflow:hidden;user-select:none;-webkit-user-select:none;flex-shrink:0}
+        .sq{position:relative;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background .06s}
+        .sq.l{background:#f0d9b5} .sq.d{background:#b58863}
+        .sq.sel.l{background:#829769} .sq.sel.d{background:#646d40}
+        .sq.lm.l{background:#cdd16a} .sq.lm.d{background:#aaa23a}
+        .sq.hf.l,.sq.ht.l{background:#48b5ff;animation:hpulse 1s ease-in-out infinite} .sq.hf.d,.sq.ht.d{background:#2090dd;animation:hpulse 1s ease-in-out infinite}
+        @keyframes hpulse{0%,100%{opacity:1}50%{opacity:.7}}
+        .hint-box{background:#1a2a3a;border:1px solid #2a5a8a;border-radius:5px;padding:8px 10px;margin-bottom:8px}
+        .hint-box .hint-title{font-weight:700;color:#48b5ff;font-size:.78rem;margin-bottom:3px}
+        .hint-box .hint-move{font-size:.9rem;color:#e0e0e0;font-weight:700;font-family:'SF Mono',Consolas,monospace}
+        .hint-box .hint-why{font-size:.77rem;color:#aaa;margin-top:4px}
+        .sq.chk{background:radial-gradient(ellipse at center,rgba(255,0,0,.65) 0%,rgba(200,0,0,.25) 80%,transparent 100%)!important}
+        .sq .pc{font-size:var(--pc);line-height:1;z-index:2;pointer-events:none}
+        .sq .pc.wp{color:#fff;-webkit-text-stroke:1.2px #333;paint-order:stroke fill;text-shadow:0 1px 4px rgba(0,0,0,.4)}
+        .sq .pc.bp{color:#1a1a1a;-webkit-text-stroke:.8px #000;paint-order:stroke fill;text-shadow:none}
+        .sq .dot{position:absolute;width:28%;height:28%;border-radius:50%;background:rgba(0,0,0,.12);z-index:3;pointer-events:none}
+        .sq .cring{position:absolute;width:86%;height:86%;border-radius:50%;border:5px solid rgba(0,0,0,.12);z-index:3;pointer-events:none}
+        .sq .crd{position:absolute;font-size:calc(var(--sq)*0.17);font-weight:700;pointer-events:none;z-index:4}
+        .sq .crd-f{right:2px;bottom:1px} .sq .crd-r{left:2px;top:1px}
+        .sq.l .crd{color:#b58863} .sq.d .crd{color:#f0d9b5}
+
+        .sidebar{width:420px;flex-shrink:0;flex-grow:0;display:flex;flex-direction:column;gap:8px;align-self:stretch;max-height:calc(var(--bs) + 66px)}
+        .pnl{background:#1f1e1b;border-radius:6px;overflow:hidden}
+        .pnl-hdr{padding:7px 10px;font-size:.73rem;font-weight:600;color:#777;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid #2b2926;display:flex;align-items:center;gap:6px}
+
+        .ctrl-row{display:flex;flex-wrap:wrap;gap:4px;padding:8px 10px}
+        .btn{padding:5px 10px;border:none;border-radius:4px;background:#2b2926;color:#bababa;font-size:.77rem;cursor:pointer;transition:background .12s;font-weight:500}
+        .btn:hover{background:#3b3936;color:#e0e0e0}
+        .btn.pri{background:#629924;color:#fff}
+        .btn.pri:hover{background:#72a934}
+        .btn.retry{background:#c06030;color:#fff}
+        .btn.retry:hover{background:#d07040}
+        .btn:disabled{opacity:.3;cursor:not-allowed}
+        .diff-row{padding:4px 10px 8px}
+        .diff-row select{width:100%;padding:5px 7px;background:#2b2926;color:#e0e0e0;border:1px solid #3b3936;border-radius:4px;font-size:.8rem;cursor:pointer}
+
+        .status-box{padding:6px 10px;font-size:.83rem;text-align:center;font-weight:500}
+        .status-box.yt{color:#629924} .status-box.th{color:#d4a017} .status-box.ck{color:#e55} .status-box.go{color:#f5a623;font-weight:700}
+        .think-anim{display:none;align-items:center;justify-content:center;gap:3px;padding:3px 10px;font-size:.76rem;color:#888}
+        .think-anim.on{display:flex}
+        .think-anim .da{animation:bl 1.4s infinite both}
+        .think-anim .da:nth-child(2){animation-delay:.2s}
+        .think-anim .da:nth-child(3){animation-delay:.4s}
+        @keyframes bl{0%,80%,100%{opacity:.2}40%{opacity:1}}
+
+        .coach-box{overflow-y:auto;padding:8px 10px;font-size:.79rem;line-height:1.5;flex:1}
+        .coach-box::-webkit-scrollbar{width:4px}
+        .coach-box::-webkit-scrollbar-thumb{background:#3b3936;border-radius:2px}
+
+        .threat-box{background:#3a1a1a;border:1px solid #6b2a2a;border-radius:5px;padding:7px 9px;margin-bottom:8px}
+        .threat-box .threat-title{font-weight:700;color:#e55;font-size:.74rem;margin-bottom:3px;text-transform:uppercase;letter-spacing:.3px}
+        .threat-box .threat-item{padding:1px 0;font-size:.77rem;color:#f0a0a0}
+        .threat-box .threat-item.warn{color:#d4a017}
+
+        .retry-box{background:#3a2a1a;border:1px solid #7a5a2a;border-radius:5px;padding:8px 10px;margin-bottom:8px;text-align:center}
+        .retry-box .retry-msg{font-size:.82rem;color:#d4a017;margin-bottom:6px;font-weight:500}
+        .retry-box .retry-hint{font-size:.76rem;color:#aaa;margin-bottom:8px}
+
+        .coach-quote{border-left:3px solid #629924;padding:5px 9px;margin-bottom:8px;color:#d4d4d4;background:#22211e;border-radius:0 4px 4px 0;font-size:.8rem}
+        .coach-quote.cq-great{border-color:#2a9d2a} .coach-quote.cq-good{border-color:#629924} .coach-quote.cq-ok{border-color:#888} .coach-quote.cq-inac{border-color:#d4a017} .coach-quote.cq-mistake{border-color:#e55} .coach-quote.cq-blunder{border-color:#c00}
+        .cq-label{font-weight:700;margin-right:4px}
+        .cq-label.great{color:#2a9d2a} .cq-label.good{color:#629924} .cq-label.ok{color:#999} .cq-label.inac{color:#d4a017} .cq-label.mistake{color:#e55} .cq-label.blunder{color:#c00}
+
+        .opening-tag{display:flex;align-items:center;gap:6px;padding:4px 8px;background:#22211e;border-radius:4px;font-size:.74rem;color:#aaa;margin-bottom:6px;border-left:2px solid #629924}
+        .opening-tag .opening-name{color:#d4d4d4;font-weight:600}
+        .opening-tag .opening-stats{margin-left:auto;display:flex;gap:4px;font-size:.65rem}
+        .opening-tag .os-w{color:#e8e8e8} .opening-tag .os-d{color:#999} .opening-tag .os-b{color:#666}
+
+        .coach-phase{font-size:.68rem;color:#666;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+
+        .scores-wrap{margin-bottom:8px;padding:4px 0}
+        .score-row{display:flex;align-items:center;gap:6px;padding:1.5px 0}
+        .score-label{width:90px;font-size:.68rem;color:#888;flex-shrink:0}
+        .score-bar{flex:1;height:5px;background:#2b2926;border-radius:3px;overflow:hidden}
+        .score-fill{height:100%;border-radius:3px;transition:width .5s ease}
+        .score-fill.sf-good{background:#629924} .score-fill.sf-ok{background:#d4a017} .score-fill.sf-bad{background:#e55}
+        .score-val{width:38px;font-size:.62rem;color:#777;text-align:right;flex-shrink:0}
+
+        .c-sec{margin-bottom:6px}
+        .c-sec-t{font-weight:700;color:#999;font-size:.7rem;text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px;display:flex;align-items:center;gap:5px}
+        .c-note{padding:1px 0;font-size:.77rem}
+        .c-note.good{color:#7cc35d} .c-note.neutral{color:#999} .c-note.warn{color:#d4a017} .c-note.bad{color:#e07}
+
+        .analysis-cols{display:flex;gap:6px;margin-bottom:8px}
+        .analysis-col{flex:1;background:#22211e;border-radius:4px;padding:5px 7px;min-width:0}
+        .analysis-col-hdr{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.3px;margin-bottom:3px;padding-bottom:2px;border-bottom:1px solid #2b2926}
+        .analysis-col-hdr.mine{color:#629924}
+        .analysis-col-hdr.opp{color:#d4a017}
+        .analysis-col .c-note{font-size:.73rem}
+
+        .explorer-box{background:#22211e;border-radius:4px;padding:5px 7px;margin-bottom:8px}
+        .explorer-title{font-size:.66rem;color:#666;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px}
+        .explorer-moves{display:flex;flex-direction:column;gap:2px}
+        .explorer-mv{display:flex;align-items:center;gap:6px;font-size:.74rem;padding:1px 0}
+        .explorer-mv .em-san{font-weight:600;color:#d4d4d4;width:36px;font-family:'SF Mono',Consolas,monospace}
+        .explorer-mv .em-bar{flex:1;height:10px;display:flex;border-radius:2px;overflow:hidden}
+        .em-bar-w{background:#e8e8e8;height:100%} .em-bar-d{background:#888;height:100%} .em-bar-b{background:#444;height:100%}
+        .explorer-mv .em-n{font-size:.62rem;color:#777;width:36px;text-align:right}
+
+        .tb-box{background:#1a2a1a;border:1px solid #2a5a2a;border-radius:4px;padding:6px 8px;margin-bottom:8px;font-size:.78rem}
+        .tb-box.tb-loss{background:#3a1a1a;border-color:#6b2a2a}
+        .tb-box.tb-draw{background:#2a2a1a;border-color:#5a5a2a}
+        .tb-box .tb-title{font-size:.66rem;color:#666;text-transform:uppercase;letter-spacing:.3px}
+        .tb-box .tb-result{font-weight:700;margin-top:2px}
+        .tb-box .tb-result.tw{color:#7cc35d} .tb-box .tb-result.td{color:#d4a017} .tb-box .tb-result.tl{color:#e55}
+        .tb-box .tb-move{font-size:.74rem;color:#aaa;margin-top:2px}
+
+        .pv-box{background:#22211e;border-radius:4px;padding:5px 7px;margin-bottom:8px;font-family:'SF Mono','Cascadia Code',Consolas,monospace}
+        .pv-title{font-size:.66rem;color:#666;text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px}
+        .pv-line{font-size:.76rem;color:#aaa;word-break:break-all}
+        .pv-eval{font-size:.72rem;color:#629924;font-weight:600;margin-left:4px}
+
+        .c-plan{list-style:none;padding:0;margin-top:3px}
+        .c-plan li{padding:2px 0 2px 14px;position:relative;font-size:.77rem;color:#ccc}
+        .c-plan li::before{content:'\25B8';position:absolute;left:0;color:#629924}
+
+        .moves-box{overflow-y:auto;max-height:100px;flex-shrink:0}
+        .moves-box::-webkit-scrollbar{width:4px}
+        .moves-box::-webkit-scrollbar-thumb{background:#3b3936;border-radius:2px}
+        .mv-grid{display:grid;grid-template-columns:26px 1fr 1fr;padding:4px 7px;gap:1px 0;font-size:.78rem;font-family:'SF Mono','Cascadia Code',Consolas,monospace}
+        .mv-n{color:#555;text-align:right;padding-right:5px;padding-top:1px;padding-bottom:1px}
+        .mv{padding:1px 4px;border-radius:3px;cursor:pointer;color:#bababa}
+        .mv:hover{background:#2b2926}
+        .mv.cur{background:#2b2926;color:#e0e0e0;font-weight:600}
+
+        .promo-ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;align-items:center;justify-content:center}
+        .promo-ov.on{display:flex}
+        .promo-dlg{background:#262421;border-radius:10px;padding:16px 18px;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,.5)}
+        .promo-dlg h3{margin-bottom:12px;color:#e0e0e0;font-size:.95rem}
+        .promo-opts{display:flex;gap:7px}
+        .promo-o{width:56px;height:56px;display:flex;align-items:center;justify-content:center;font-size:36px;background:#f0d9b5;border-radius:6px;cursor:pointer;transition:all .12s;border:2px solid transparent}
+        .promo-o:hover{background:#829769;border-color:#629924}
+
+        @media(max-width:960px){
+            .main{flex-direction:column;align-items:center;padding:10px;gap:10px}
+            .sidebar{width:100%;max-width:calc(var(--bs) + 17px);max-height:none}
+            .coach-box{max-height:350px}
+            .moves-box{max-height:80px}
+            .analysis-cols{flex-direction:column}
+            .player-info{width:auto;max-width:calc(var(--bs) + 17px)}
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <span class="logo">&#9822;</span>
+        <h1>&#352;ahovski Trener</h1>
+    </header>
+
+    <div class="main">
+        <div class="board-sec">
+            <div class="player-info" id="p-top">
+                <div class="icon bi">S</div>
+                <span class="name">Stockfish</span>
+                <span class="captured" id="cap-top"></span>
+                <span class="adv" id="adv-top"></span>
+            </div>
+            <div class="board-wrap">
+                <div class="eval-bar"><div class="eval-fill" id="ev-fill"></div><div class="eval-lbl top" id="ev-top"></div><div class="eval-lbl bot" id="ev-bot"></div></div>
+                <div class="board" id="board"></div>
+            </div>
+            <div class="player-info" id="p-bot">
+                <div class="icon wi">T</div>
+                <span class="name">Ti</span>
+                <span class="captured" id="cap-bot"></span>
+                <span class="adv" id="adv-bot"></span>
+            </div>
+        </div>
+
+        <div class="sidebar">
+            <div class="pnl">
+                <div class="ctrl-row">
+                    <button class="btn pri" id="btn-new">Nova igra</button>
+                    <button class="btn" id="btn-undo">&larr; Vrati</button>
+                    <button class="btn" id="btn-hint">Hint</button>
+                    <button class="btn" id="btn-flip">&updownarrow;</button>
+                </div>
+                <div class="diff-row">
+                    <select id="sel-diff">
+                        <option value="0">Po&#269;etnik (Elo ~800)</option>
+                        <option value="3">Lako (Elo ~1000)</option>
+                        <option value="6">Srednje-lako (Elo ~1200)</option>
+                        <option value="10" selected>Srednje (Elo ~1500)</option>
+                        <option value="14">Te&#353;ko (Elo ~1800)</option>
+                        <option value="18">Veoma te&#353;ko (Elo ~2200)</option>
+                        <option value="20">Majstor (Elo ~2500+)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="pnl">
+                <div class="status-box yt" id="status">Tvoj potez</div>
+                <div class="think-anim" id="think">Stockfish razmi&#353;lja<span class="da">.</span><span class="da">.</span><span class="da">.</span></div>
+            </div>
+
+            <div class="pnl" style="flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden">
+                <div class="pnl-hdr">&#9823; Trener</div>
+                <div class="coach-box" id="coach"></div>
+            </div>
+
+            <div class="pnl" style="display:flex;flex-direction:column;min-height:0;flex-shrink:0">
+                <div class="pnl-hdr">Potezi</div>
+                <div class="moves-box"><div class="mv-grid" id="mv-grid"></div></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="promo-ov" id="promo-ov">
+        <div class="promo-dlg">
+            <h3>Izaberi figuru</h3>
+            <div class="promo-opts" id="promo-opts"></div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+    <script>
+    (function(){
+    'use strict';
+
+    var P_UNI={wK:'\u265A',wQ:'\u265B',wR:'\u265C',wB:'\u265D',wN:'\u265E',wP:'\u265F',bK:'\u265A',bQ:'\u265B',bR:'\u265C',bB:'\u265D',bN:'\u265E',bP:'\u265F'};
+    var PVAL={p:1,n:3,b:3,r:5,q:9,k:0};
+    var FILES='abcdefgh';
+    var DMAP={0:1,3:3,6:5,10:10,14:13,18:16,20:20};
+    var CENTER=[{r:3,c:3},{r:3,c:4},{r:4,c:3},{r:4,c:4}];
+    var XCENTER=[{r:2,c:2},{r:2,c:3},{r:2,c:4},{r:2,c:5},{r:3,c:2},{r:3,c:5},{r:4,c:2},{r:4,c:5},{r:5,c:2},{r:5,c:3},{r:5,c:4},{r:5,c:5}];
+    var PN={p:'Pe\u0161ak',n:'Konj',b:'Lovac',r:'Top',q:'Dama',k:'Kralj'};
+
+    // Opening DB
+    var ODB=[
+        {m:'e4',n:'Kraljeva pe\u0161a\u010Dka'},{m:'d4',n:'Damina pe\u0161a\u010Dka'},{m:'c4',n:'Engleska partija'},{m:'Nf3',n:'Retijevo otvaranje'},
+        {m:'e4 e5',n:'Otvorena igra'},{m:'e4 c5',n:'Sicilijanska odbrana'},{m:'e4 e6',n:'Francuska odbrana'},{m:'e4 c6',n:'Karo-Kan odbrana'},
+        {m:'e4 d5',n:'Skandinavska odbrana'},{m:'e4 d6',n:'Pirc odbrana'},{m:'e4 Nf6',n:'Aljehinova odbrana'},{m:'e4 g6',n:'Moderna odbrana'},
+        {m:'d4 d5',n:'Zatvorena igra'},{m:'d4 Nf6',n:'Indijska odbrana'},{m:'d4 f5',n:'Holandska odbrana'},
+        {m:'e4 e5 Nf3',n:'Kraljevski skok'},{m:'e4 e5 f4',n:'Kraljevski gambit'},{m:'e4 e5 Nc3',n:'Be\u010Dka partija'},
+        {m:'e4 e5 Nf3 Nc6 Bb5',n:'\u0160panska partija (Ruy Lopez)'},{m:'e4 e5 Nf3 Nc6 Bc4',n:'Italijanska partija'},
+        {m:'e4 e5 Nf3 Nc6 d4',n:'\u0160kotska partija'},{m:'e4 e5 Nf3 Nf6',n:'Petrova odbrana'},
+        {m:'e4 e5 Nf3 d6',n:'Philidorova odbrana'},{m:'e4 e5 Nf3 Nc6 Bc4 Bc5',n:'Giuoco Piano'},
+        {m:'e4 e5 Nf3 Nc6 Bc4 Nf6',n:'Dvokraljeva odbrana'},
+        {m:'e4 e5 Nf3 Nc6 Bb5 a6',n:'\u0160panska, Morphy'},{m:'e4 e5 Nf3 Nc6 Bb5 Nf6',n:'\u0160panska, Berlin'},
+        {m:'e4 c5 Nf3 d6',n:'Sicilijanska'},{m:'e4 c5 Nf3 Nc6',n:'Sicilijanska, Otvorena'},
+        {m:'e4 c5 Nf3 e6',n:'Sicilijanska sa e6'},{m:'e4 c5 c3',n:'Sicilijanska, Alapin'},
+        {m:'e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6',n:'Sicil. Najdorf'},
+        {m:'e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 e5',n:'Sicil. Sve\u0161nikov'},
+        {m:'e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 g6',n:'Sicil. Zmaj'},
+        {m:'e4 e6 d4 d5',n:'Francuska odbrana'},{m:'e4 e6 d4 d5 Nc3 Bb4',n:'Francuska, Winawer'},
+        {m:'e4 e6 d4 d5 e5',n:'Francuska, Napredovanje'},{m:'e4 e6 d4 d5 Nd2',n:'Francuska, Tarrasch'},
+        {m:'e4 c6 d4 d5',n:'Karo-Kan'},{m:'e4 c6 d4 d5 Nc3',n:'Karo-Kan, Klasi\u010Dna'},
+        {m:'e4 c6 d4 d5 e5',n:'Karo-Kan, Napredovanje'},
+        {m:'d4 d5 c4',n:'Damin gambit'},{m:'d4 d5 c4 e6',n:'Damin gambit odbijeni'},
+        {m:'d4 d5 c4 dxc4',n:'Damin gambit primljeni'},{m:'d4 d5 c4 c6',n:'Slavenska odbrana'},
+        {m:'d4 d5 Bf4',n:'Londonski sistem'},{m:'d4 d5 Nf3 Nf6 Bf4',n:'Londonski sistem'},
+        {m:'d4 Nf6 c4',n:'Indijska igra'},{m:'d4 Nf6 c4 g6',n:'Kraljevsko-indijska'},
+        {m:'d4 Nf6 c4 e6',n:'Nimco/Damina indijska'},{m:'d4 Nf6 c4 c5',n:'Benoni'},
+        {m:'d4 Nf6 c4 e6 Nc3 Bb4',n:'Nimco-indijska'},{m:'d4 Nf6 c4 e6 Nf3 b6',n:'Damina indijska'},
+        {m:'d4 Nf6 c4 e6 g3',n:'Katalonska partija'},{m:'d4 Nf6 c4 g6 Nc3 Bg7',n:'Kraljevsko-indijska'},
+        {m:'d4 Nf6 c4 g6 Nc3 d5',n:'Gr\u00FCnfeld odbrana'},
+    ];
+
+    // State
+    var game=new Chess(),playerColor='w',flipped=false,selected=null,lastMove=null,hintMove=null;
+    var stockfish=null,sfReady=false,thinking=false,curEval=0,pendingBest=null,promoData=null;
+    var evalBeforePlayerMove=0,moveFeedback=null,currentPV='',pvDepth=0,threats=[];
+    var canRetry=false,retryHint='';
+    var hintText=null,isHintCalc=false;
+    var lichessCache={},tbCache={},lichessData=null,tbData=null;
+
+    // Helpers
+    function c2s(r,c){return FILES[c]+(8-r)}
+    function s2c(s){return{r:8-parseInt(s[1]),c:FILES.indexOf(s[0])}}
+    function opp(c){return c==='w'?'b':'w'}
+    function $(id){return document.getElementById(id)}
+    function escH(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+
+    function getAllPieces(brd){
+        var res={w:[],b:[]};
+        for(var r=0;r<8;r++)for(var c=0;c<8;c++){var p=brd[r][c];if(p)res[p.color].push({type:p.type,color:p.color,row:r,col:c,sq:c2s(r,c)})}
+        return res;
+    }
+    function fileOpen(brd,col){for(var r=0;r<8;r++)if(brd[r][col]&&brd[r][col].type==='p')return false;return true}
+    function fileSemiOpen(brd,col,color){for(var r=0;r<8;r++)if(brd[r][col]&&brd[r][col].type==='p'&&brd[r][col].color===color)return false;return true}
+
+    // Board sizing
+    function calcBoardSize(){
+        var vw=document.documentElement.clientWidth,vh=window.innerHeight;
+        var s;
+        if(vw<=960){
+            s=Math.min(vw-40,560);
+        }else{
+            var maxW=vw-500,maxH=vh-140;
+            s=Math.min(620,maxW,maxH);
+        }
+        s=Math.max(320,s);
+        s=Math.floor(s/8)*8;
+        var r=document.documentElement;
+        r.style.setProperty('--bs',s+'px');
+        r.style.setProperty('--sq',(s/8)+'px');
+        r.style.setProperty('--pc',Math.round(s/8*0.82)+'px');
+    }
+
+    // Engine
+    function initEngine(){
+        try{
+            var code="importScripts('https://cdn.jsdelivr.net/npm/stockfish.js@10.0.2/stockfish.js');";
+            var blob=new Blob([code],{type:'application/javascript'});
+            stockfish=new Worker(URL.createObjectURL(blob));
+            stockfish.onmessage=onSF;stockfish.onerror=function(){setStatus('Engine gre\u0161ka','go')};
+            stockfish.postMessage('uci');
+        }catch(e){setStatus('Ne mogu u\u010Ditati engine','go')}
+    }
+    function onSF(e){
+        var line=typeof e.data==='string'?e.data:'';
+        if(line==='uciok'){sfReady=true;applyDiff()}
+        if(!isHintCalc){
+            var m=line.match(/\bscore cp (-?\d+)/);
+            if(m){var cp=parseInt(m[1]);if(game.turn()==='b')cp=-cp;curEval=cp;updateEvalBar()}
+            m=line.match(/\bscore mate (-?\d+)/);
+            if(m){var mt=parseInt(m[1]);curEval=(game.turn()==='b'?-mt:mt)>0?9999:-9999;updateEvalBar()}
+            var dM=line.match(/\bdepth\s+(\d+)/),pvM=line.match(/\bpv\s+(.+)$/);
+            if(dM&&pvM){var d=parseInt(dM[1]);if(d>=pvDepth){pvDepth=d;currentPV=pvM[1]}}
+        }
+        if(line.indexOf('bestmove')===0){pvDepth=0;var mv=line.split(/\s+/)[1];if(pendingBest){var cb=pendingBest;pendingBest=null;cb(mv)}}
+    }
+    function applyDiff(){if(!stockfish||!sfReady)return;stockfish.postMessage('setoption name Skill Level value '+$('sel-diff').value)}
+    function engineGo(depth,cb){if(!stockfish||!sfReady)return;pendingBest=cb;stockfish.postMessage('position fen '+game.fen());stockfish.postMessage('go depth '+depth)}
+    function getDepth(){var l=parseInt($('sel-diff').value);return DMAP[l]||10}
+
+    // Eval bar
+    function updateEvalBar(){
+        var sig=1/(1+Math.exp(-curEval/250));
+        var pct=Math.max(3,Math.min(97,sig*100));
+        $('ev-fill').style.height=(flipped?(100-pct):pct)+'%';
+        var abs=Math.abs(curEval),txt;
+        if(abs>=9000)txt='M';else txt=(abs/100).toFixed(1);
+        if(curEval>=0){$('ev-bot').textContent=txt==='0.0'?'':txt;$('ev-top').textContent=''}
+        else{$('ev-top').textContent=txt==='0.0'?'':txt;$('ev-bot').textContent=''}
+    }
+
+    // Board
+    function renderBoard(){
+        var el=$('board');el.innerHTML='';var brd=game.board();
+        for(var r=0;r<8;r++)for(var c=0;c<8;c++){
+            var dr=flipped?7-r:r,dc=flipped?7-c:c;
+            var file=FILES[dc],rank=8-dr,sqn=file+rank,isL=(dr+dc)%2===0;
+            var piece=brd[dr][dc],sq=document.createElement('div');
+            sq.className='sq '+(isL?'l':'d');sq.dataset.sq=sqn;
+            if(lastMove&&(sqn===lastMove.from||sqn===lastMove.to))sq.classList.add('lm');
+            if(selected===sqn)sq.classList.add('sel');
+            if(hintMove&&sqn===hintMove.from)sq.classList.add('hf');
+            if(hintMove&&sqn===hintMove.to)sq.classList.add('ht');
+            if(piece&&piece.type==='k'&&piece.color===game.turn()&&game.in_check())sq.classList.add('chk');
+            if(piece){var sp=document.createElement('span');sp.className='pc '+(piece.color==='w'?'wp':'bp');sp.textContent=P_UNI[piece.color+piece.type.toUpperCase()];sq.appendChild(sp)}
+            if(selected){var mvs=game.moves({square:selected,verbose:true});if(mvs.some(function(m2){return m2.to===sqn})){var ind=document.createElement('div');ind.className=piece?'cring':'dot';sq.appendChild(ind)}}
+            if(r===7){var cf=document.createElement('span');cf.className='crd crd-f';cf.textContent=file;sq.appendChild(cf)}
+            if(c===0){var cr=document.createElement('span');cr.className='crd crd-r';cr.textContent=rank;sq.appendChild(cr)}
+            (function(s){sq.addEventListener('click',function(){onSqClick(s)})})(sqn);
+            el.appendChild(sq);
+        }
+    }
+
+    // Move handling
+    function onSqClick(sq){
+        if(thinking||game.game_over()||game.turn()!==playerColor)return;
+        hintMove=null;canRetry=false;
+        var brd=game.board(),co=s2c(sq),piece=brd[co.r][co.c];
+        if(selected){
+            var legal=game.moves({square:selected,verbose:true});
+            var targets=legal.filter(function(m2){return m2.to===sq});
+            if(targets.length>0){
+                if(targets.some(function(m2){return m2.promotion})){showPromo(selected,sq);return}
+                execMove(selected,sq);return;
+            }
+            if(piece&&piece.color===playerColor){selected=sq;renderBoard();return}
+            selected=null;renderBoard();
+        }else{
+            if(piece&&piece.color===playerColor){selected=sq;renderBoard()}
+        }
+    }
+    function execMove(from,to,promo){
+        evalBeforePlayerMove=curEval;
+        var o={from:from,to:to};if(promo)o.promotion=promo;
+        var mv=game.move(o);if(!mv)return;
+        lastMove={from:from,to:to};selected=null;
+        playSound(mv.captured);
+        afterMove();
+        if(!game.game_over()&&game.turn()!==playerColor)reqComputer();
+    }
+    function reqComputer(){
+        thinking=true;$('think').classList.add('on');setStatus('Stockfish razmi\u0161lja...','th');
+        engineGo(getDepth(),function(best){
+            thinking=false;$('think').classList.remove('on');
+            computeMoveFeedback();
+            // Check for retry opportunity
+            if(moveFeedback&&(moveFeedback.type==='mistake'||moveFeedback.type==='blunder')){
+                canRetry=true;
+                retryHint=moveFeedback.type==='blunder'?'Pazi na nebranjene figure i taktiku!':'Razmisli o boljem planu.';
+            }
+            if(!best||best==='(none)'){afterMove();return}
+            var f=best.substring(0,2),t=best.substring(2,4),pr=best.length>4?best[4]:undefined;
+            var mv=game.move({from:f,to:t,promotion:pr});
+            if(mv){lastMove={from:f,to:t};playSound(mv.captured)}
+            afterMove();
+        });
+    }
+    function afterMove(){
+        renderBoard();updateMoves();updateStatus();updateCaptured();
+        detectAllThreats();renderCoach();
+        fetchLichessData();fetchTablebaseData();
+    }
+    function doRetry(){
+        if(game.history().length<2)return;
+        game.undo();game.undo();
+        var h=game.history({verbose:true});
+        lastMove=h.length>0?{from:h[h.length-1].from,to:h[h.length-1].to}:null;
+        selected=null;hintMove=null;canRetry=false;moveFeedback=null;threats=[];
+        afterMove();
+    }
+    function showPromo(from,to){
+        promoData={from:from,to:to};var ov=$('promo-ov'),opts=$('promo-opts');opts.innerHTML='';
+        var pcs=playerColor==='w'?[{p:'q',s:'\u2655'},{p:'r',s:'\u2656'},{p:'b',s:'\u2657'},{p:'n',s:'\u2658'}]:[{p:'q',s:'\u265B'},{p:'r',s:'\u265C'},{p:'b',s:'\u265D'},{p:'n',s:'\u265E'}];
+        pcs.forEach(function(x){var el=document.createElement('div');el.className='promo-o';el.textContent=x.s;
+            el.addEventListener('click',function(){ov.classList.remove('on');execMove(promoData.from,promoData.to,x.p);promoData=null});opts.appendChild(el)});
+        ov.classList.add('on');
+    }
+
+    // Sound
+    var audioCtx=null;
+    function playSound(capture){
+        try{if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+        var osc=audioCtx.createOscillator(),gain=audioCtx.createGain();
+        osc.connect(gain);gain.connect(audioCtx.destination);
+        osc.frequency.value=capture?880:440;gain.gain.value=0.08;osc.start();
+        gain.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+(capture?0.12:0.08));
+        osc.stop(audioCtx.currentTime+0.15)}catch(e){}
+    }
+
+    // Status & UI
+    function setStatus(t,cls){var el=$('status');el.textContent=t;el.className='status-box'+(cls?' '+cls:'')}
+    function updateStatus(){
+        if(game.in_checkmate())setStatus('\u0160ah-mat! '+(game.turn()===playerColor?'Stockfish':'Ti')+' pobe\u0111uje!','go');
+        else if(game.in_stalemate())setStatus('Pat \u2014 nere\u0161eno!','go');
+        else if(game.in_draw())setStatus('Remi!','go');
+        else if(game.in_check())setStatus(game.turn()===playerColor?'\u0160ah! Tvoj potez.':'\u0160ah!','ck');
+        else if(game.turn()===playerColor)setStatus('Tvoj potez','yt');
+        else setStatus('Stockfish razmi\u0161lja...','th');
+    }
+    function updateMoves(){
+        var g=$('mv-grid'),h=game.history();g.innerHTML='';
+        for(var i=0;i<h.length;i+=2){
+            var n=document.createElement('span');n.className='mv-n';n.textContent=(Math.floor(i/2)+1)+'.';g.appendChild(n);
+            var w=document.createElement('span');w.className='mv'+(i===h.length-1?' cur':'');w.textContent=h[i];g.appendChild(w);
+            if(i+1<h.length){var b=document.createElement('span');b.className='mv'+(i+1===h.length-1?' cur':'');b.textContent=h[i+1];g.appendChild(b)}
+            else g.appendChild(document.createElement('span'));
+        }
+        g.parentElement.scrollTop=g.parentElement.scrollHeight;
+    }
+    function updateCaptured(){
+        var hist=game.history({verbose:true}),cap={w:[],b:[]};
+        hist.forEach(function(m2){if(m2.captured)cap[m2.color==='w'?'b':'w'].push(m2.captured)});
+        var ord={q:0,r:1,b:2,n:3,p:4};
+        cap.w.sort(function(a,b){return ord[a]-ord[b]});cap.b.sort(function(a,b){return ord[a]-ord[b]});
+        var wV=cap.b.reduce(function(s,p){return s+PVAL[p]},0),bV=cap.w.reduce(function(s,p){return s+PVAL[p]},0),adv=wV-bV;
+        var wSym=cap.b.map(function(p){return P_UNI['b'+p.toUpperCase()]}).join('');
+        var bSym=cap.w.map(function(p){return P_UNI['w'+p.toUpperCase()]}).join('');
+        if(!flipped){$('cap-top').textContent=bSym;$('adv-top').textContent=adv<0?'+'+Math.abs(adv):'';$('cap-bot').textContent=wSym;$('adv-bot').textContent=adv>0?'+'+adv:''}
+        else{$('cap-top').textContent=wSym;$('adv-top').textContent=adv>0?'+'+adv:'';$('cap-bot').textContent=bSym;$('adv-bot').textContent=adv<0?'+'+Math.abs(adv):''}
+    }
+    function updateLabels(){
+        var topEl=$('p-top'),botEl=$('p-bot'),ds=$('sel-diff'),dt=ds.options[ds.selectedIndex].text;
+        if(!flipped){topEl.querySelector('.icon').className='icon '+(playerColor==='w'?'bi':'wi');topEl.querySelector('.icon').textContent='S';topEl.querySelector('.name').textContent='Stockfish ('+dt+')';botEl.querySelector('.icon').className='icon '+(playerColor==='w'?'wi':'bi');botEl.querySelector('.icon').textContent='T';botEl.querySelector('.name').textContent='Ti'}
+        else{topEl.querySelector('.icon').className='icon '+(playerColor==='w'?'wi':'bi');topEl.querySelector('.icon').textContent='T';topEl.querySelector('.name').textContent='Ti';botEl.querySelector('.icon').className='icon '+(playerColor==='w'?'bi':'wi');botEl.querySelector('.icon').textContent='S';botEl.querySelector('.name').textContent='Stockfish ('+dt+')'}
+    }
+
+    // Opening recognition
+    function getOpeningName(){
+        var h=game.history();if(h.length===0)return null;
+        var ms=h.join(' '),best=null;
+        for(var i=0;i<ODB.length;i++){var e=ODB[i];if(ms===e.m||ms.indexOf(e.m+' ')===0){if(!best||e.m.length>best.m.length)best=e}}
+        return best?best.n:null;
+    }
+
+    // PV to SAN
+    function pvToSAN(pvStr,max){
+        if(!pvStr)return'';var moves=pvStr.trim().split(/\s+/),temp=new Chess(game.fen()),san=[];
+        for(var i=0;i<Math.min(moves.length,max||8);i++){
+            var m2=moves[i];if(m2.length<4)break;
+            try{var mv=temp.move({from:m2.substring(0,2),to:m2.substring(2,4),promotion:m2.length>4?m2[4]:undefined});if(!mv)break;san.push(mv.san)}catch(e){break}
+        }
+        if(san.length===0)return'';
+        var fen=game.fen(),turnC=fen.split(' ')[1],mNum=parseInt(fen.split(' ')[5]),res='',ct=turnC;
+        for(var j=0;j<san.length;j++){
+            if(ct==='w'){res+=mNum+'.'+san[j]+' ';ct='b'}
+            else{if(j===0)res+=mNum+'...';res+=san[j]+' ';ct='w';mNum++}
+        }
+        return res.trim();
+    }
+
+    // Threat detection with strategic explanations
+    function detectAllThreats(){
+        threats=[];
+        if(game.game_over()||game.turn()!==playerColor)return;
+        var fen=game.fen(),parts=fen.split(' ');
+        parts[1]=opp(playerColor);parts[3]='-';
+        var brd=game.board();
+        try{
+            var tg=new Chess(parts.join(' '));
+            var opMoves=tg.moves({verbose:true}),caps=opMoves.filter(function(m2){return m2.captured});
+            var tmap={};
+            caps.forEach(function(m2){if(!tmap[m2.to])tmap[m2.to]={piece:m2.captured,attackers:[]};tmap[m2.to].attackers.push({piece:m2.piece,from:m2.from})});
+            var myMoves=game.moves({verbose:true});
+            var threatened=[];
+            for(var sq in tmap){
+                var t=tmap[sq],pv=PVAL[t.piece]||0;if(pv===0)continue;
+                var minAV=999,minAttacker=null;
+                t.attackers.forEach(function(a){if(PVAL[a.piece]<minAV){minAV=PVAL[a.piece];minAttacker=a}});
+                var canRecap=myMoves.some(function(m2){return m2.to===sq&&m2.from!==sq});
+                var canEvade=myMoves.some(function(m2){return m2.from===sq});
+                // Build detailed threat info
+                var ti={sq:sq,piece:t.piece,pieceVal:pv,attackers:t.attackers,minAV:minAV,minAttacker:minAttacker,canRecap:canRecap,canEvade:canEvade};
+                // What is attacking it?
+                var attackerDesc=t.attackers.map(function(a){return PN[a.piece]+' sa '+a.from}).join(', ');
+                if(!canRecap&&!canEvade){
+                    ti.sev='bad';
+                    ti.text=PN[t.piece]+' na '+sq+' je zarobljen! Napadnut od: '+attackerDesc+'. Ne mo\u017Ee pobeći niti biti odbranjen \u2014 gubi\u0161 '+pv+' poena materijala.';
+                }else if(!canRecap&&canEvade){
+                    ti.sev=pv>=3?'bad':'warn';
+                    ti.text=PN[t.piece]+' na '+sq+' je napadnut od '+attackerDesc+'.';
+                    // Suggest where to go
+                    var escapes=myMoves.filter(function(m2){return m2.from===sq});
+                    if(escapes.length>0){
+                        // Find constructive retreats (captures, center squares, defensive)
+                        var bestEsc=escapes.filter(function(m2){return m2.captured});
+                        if(bestEsc.length===0)bestEsc=escapes.filter(function(m2){var tc=s2c(m2.to);return CENTER.some(function(cs){return cs.r===tc.r&&cs.c===tc.c})||XCENTER.some(function(cs){return cs.r===tc.r&&cs.c===tc.c})});
+                        if(bestEsc.length===0)bestEsc=escapes;
+                        ti.text+=' Mo\u017Ee pobe\u0107i na: '+bestEsc.slice(0,3).map(function(m2){return m2.to}).join(', ')+'.';
+                    }
+                    if(minAV<pv)ti.text+=' Protivnik koristi manje vrednu figuru ('+PN[minAttacker.piece]+' = '+minAV+') da napada tvoju vredniju ('+PN[t.piece]+' = '+pv+') \u2014 mora\u0161 reagovati!';
+                }else if(canRecap&&minAV<pv){
+                    ti.sev='warn';
+                    ti.text='Protivnik preti razmenom na '+sq+': '+PN[minAttacker.piece]+' ('+minAV+') uzima tvog '+PN[t.piece]+' ('+pv+'). Iako mo\u017Ee\u0161 uzvratiti, gubi\u0161 na materijalu. Bolje pomeri figuru.';
+                }else{
+                    continue; // well defended, not a real threat
+                }
+                threatened.push(ti);
+            }
+            // Sort by severity and value (most valuable threatened first)
+            threatened.sort(function(a,b){
+                if(a.sev==='bad'&&b.sev!=='bad')return-1;
+                if(b.sev==='bad'&&a.sev!=='bad')return 1;
+                return b.pieceVal-a.pieceVal;
+            });
+            // If multiple pieces threatened, add strategic advice
+            if(threatened.length>=2){
+                var totalVal=0;threatened.forEach(function(t2){totalVal+=t2.pieceVal});
+                var canSaveBothInOne=false;
+                // Check if one move saves multiple threats
+                var pieceSqs=threatened.map(function(t2){return t2.sq});
+                myMoves.forEach(function(m2){
+                    if(pieceSqs.indexOf(m2.from)>=0){
+                        // This move saves one piece. Does it also defend the other?
+                        // Simplified check: if it's a capture that solves things
+                    }
+                });
+                threats.push({
+                    text:threatened.length+' figure su pod pretnjom (ukupno '+totalVal+' poena)! Prioritet: spasi najvredniju figuru prvo. Razmisli da li jednim potezom mo\u017Ee\u0161 re\u0161iti obe pretnje.',
+                    sev:'bad'
+                });
+            }
+            // Add individual threats
+            threatened.forEach(function(ti){threats.push({text:ti.text,sev:ti.sev})});
+        }catch(e){}
+    }
+
+    // Lichess Opening Explorer
+    function fetchLichessData(){
+        var fen=game.fen(),mc=game.history().length;
+        if(mc>25){lichessData=null;return}
+        if(lichessCache[fen]){lichessData=lichessCache[fen];updateCoachLichess();return}
+        lichessData=null;
+        fetch('https://explorer.lichess.ovh/masters?fen='+encodeURIComponent(fen)+'&topGames=0&recentGames=0',{headers:{'Accept':'application/json'}})
+            .then(function(r){if(!r.ok)return null;return r.json()})
+            .then(function(data){if(data){lichessCache[fen]=data;lichessData=data;updateCoachLichess()}})
+            .catch(function(){});
+    }
+    function fetchTablebaseData(){
+        var fen=game.fen(),pc=fen.split(' ')[0].replace(/[0-9\/]/g,'').length;
+        if(pc>7){tbData=null;return}
+        if(tbCache[fen]){tbData=tbCache[fen];updateCoachTB();return}
+        tbData=null;
+        fetch('https://tablebase.lichess.ovh/standard?fen='+encodeURIComponent(fen))
+            .then(function(r){return r.json()})
+            .then(function(data){tbCache[fen]=data;tbData=data;updateCoachTB()})
+            .catch(function(){});
+    }
+    function updateCoachLichess(){
+        var el=document.getElementById('lichess-explorer');
+        if(!el||!lichessData)return;
+        var d=lichessData,total=d.white+d.draws+d.black;
+        if(total<10){el.innerHTML='';return}
+        var h='<div class="explorer-title">\u25B8 \u0160ta igraju u ovoj poziciji ('+total.toLocaleString()+' partija)</div>';
+        h+='<div class="explorer-moves">';
+        var mvs=(d.moves||[]).slice(0,5);
+        mvs.forEach(function(m2){
+            var mt=m2.white+m2.draws+m2.black;if(mt<5)return;
+            var wP=Math.round(m2.white/mt*100),dP=Math.round(m2.draws/mt*100),bP=100-wP-dP;
+            h+='<div class="explorer-mv"><span class="em-san">'+escH(m2.san)+'</span>';
+            h+='<div class="em-bar"><div class="em-bar-w" style="width:'+wP+'%"></div><div class="em-bar-d" style="width:'+dP+'%"></div><div class="em-bar-b" style="width:'+bP+'%"></div></div>';
+            h+='<span class="em-n">'+mt+'</span></div>';
+        });
+        h+='</div>';el.innerHTML=h;
+    }
+    function updateCoachTB(){
+        var el=document.getElementById('tb-info');
+        if(!el||!tbData)return;
+        var d=tbData,cat=d.category||'unknown';
+        // Flip category if it's opponent's turn perspective
+        var cls='',label='',color='';
+        if(cat==='win'||cat==='maybe-win'){cls='';label='Pozicija je dobijena!';color='tw'}
+        else if(cat==='loss'||cat==='maybe-loss'){cls=' tb-loss';label='Pozicija je izgubljena.';color='tl'}
+        else if(cat==='draw'||cat==='blessed-loss'||cat==='cursed-win'){cls=' tb-draw';label='Ovo je remi.';color='td'}
+        else{el.innerHTML='';return}
+        var h='<div class="tb-box'+cls+'"><div class="tb-title">\u25B8 Tablebase (savr\u0161ena igra)</div>';
+        h+='<div class="tb-result '+color+'">'+escH(label)+'</div>';
+        if(d.moves&&d.moves.length>0){
+            var best=d.moves[0];
+            h+='<div class="tb-move">Najbolji potez: <strong>'+escH(best.san)+'</strong></div>';
+        }
+        h+='</div>';el.innerHTML=h;
+    }
+
+    // Positional Analysis
+    function findIsolated(pawns){return pawns.filter(function(p){return!pawns.some(function(o){return o!==p&&Math.abs(o.col-p.col)===1})})}
+    function findDoubled(pawns){var fc={};pawns.forEach(function(p){fc[p.col]=(fc[p.col]||0)+1});var res=[];for(var c in fc)if(fc[c]>1)res.push({file:FILES[parseInt(c)],count:fc[c]});return res}
+    function findPassed(brd,pawns,color){
+        return pawns.filter(function(p){
+            var dir=color==='w'?-1:1,end=color==='w'?0:7;
+            for(var r=p.row+dir;color==='w'?r>=end:r<=end;r+=dir)for(var dc=-1;dc<=1;dc++){var c=p.col+dc;if(c<0||c>7)continue;var sq=brd[r][c];if(sq&&sq.type==='p'&&sq.color!==color)return false}
+            return true;
+        });
+    }
+    function findBackward(brd,pawns,color){
+        return pawns.filter(function(p){
+            var hasSup=pawns.some(function(o){if(o===p||Math.abs(o.col-p.col)!==1)return false;return color==='w'?o.row<=p.row:o.row>=p.row});
+            if(hasSup)return false;
+            var advR=color==='w'?p.row-1:p.row+1;if(advR<0||advR>7)return false;
+            for(var dc=-1;dc<=1;dc+=2){var ac=p.col+dc;if(ac<0||ac>7)continue;var atkR=color==='w'?advR+1:advR-1;if(atkR>=0&&atkR<=7&&brd[atkR][ac]&&brd[atkR][ac].type==='p'&&brd[atkR][ac].color!==color)return true}
+            return false;
+        });
+    }
+    function analyzePawns(brd,pieces,pc){
+        var my=pieces[pc].filter(function(p){return p.type==='p'}),op=pieces[opp(pc)].filter(function(p){return p.type==='p'}),notes=[];
+        findIsolated(my).forEach(function(p){notes.push({t:'Izolovani pe\u0161ak na '+p.sq,c:'warn'})});
+        findIsolated(op).forEach(function(p){notes.push({t:'Protivnik: izolovan pe\u0161ak na '+p.sq+' \u2014 napadni!',c:'good'})});
+        findDoubled(my).forEach(function(d){notes.push({t:'Udvostru\u010Deni pe\u0161aci na '+d.file+'-liniji',c:'warn'})});
+        findBackward(brd,my,pc).forEach(function(p){notes.push({t:'Zaostali pe\u0161ak na '+p.sq,c:'warn'})});
+        findBackward(brd,op,opp(pc)).forEach(function(p){notes.push({t:'Protivnik: zaostali pe\u0161ak na '+p.sq,c:'good'})});
+        var myPass=findPassed(brd,my,pc);
+        myPass.forEach(function(p){var rk=pc==='w'?8-p.row:p.row+1;notes.push({t:'Slobodni pe\u0161ak na '+p.sq+(rk>=6?' \u2014 blizu promocije!':' \u2014 guraj!'),c:'good'})});
+        var opPass=findPassed(brd,op,opp(pc));
+        opPass.forEach(function(p){notes.push({t:'Protivnik: slobodni pe\u0161ak na '+p.sq+' \u2014 blokiraj!',c:'bad'})});
+        if(notes.length===0)notes.push({t:'Zdrava pe\u0161a\u010Dka struktura.',c:'neutral'});
+        return{notes:notes,myIso:findIsolated(my),opIso:findIsolated(op),myPass:myPass,opPass:opPass};
+    }
+    function analyzeDev(pieces,pc){
+        var backR=pc==='w'?7:0,minors=pieces[pc].filter(function(p){return p.type==='n'||p.type==='b'});
+        var dev=minors.filter(function(p){return p.row!==backR}),undev=minors.filter(function(p){return p.row===backR});
+        var king=pieces[pc].find(function(p){return p.type==='k'});
+        var castled=king&&((pc==='w'&&(king.sq==='g1'||king.sq==='c1'))||(pc==='b'&&(king.sq==='g8'||king.sq==='c8')));
+        var onStart=king&&((pc==='w'&&king.sq==='e1')||(pc==='b'&&king.sq==='e8'));
+        var notes=[];
+        if(minors.length>0)notes.push({t:'Razvoj: '+dev.length+'/'+minors.length+' lakih figura.',c:dev.length>=minors.length?'good':(dev.length>=2?'neutral':'warn')});
+        if(undev.length>0)notes.push({t:'Treba razviti: '+undev.map(function(p){return PN[p.type]+' '+p.sq}).join(', '),c:'warn'});
+        if(castled)notes.push({t:'Rokada obavljena.',c:'good'});
+        else if(onStart)notes.push({t:'Rokuraj \u0161to pre!',c:'warn'});
+        var oM=pieces[opp(pc)].filter(function(p){return p.type==='n'||p.type==='b'}),oD=oM.filter(function(p){return p.row!==(pc==='w'?0:7)});
+        if(dev.length>oD.length+1)notes.push({t:'Prednost u razvoju \u2014 iskoristi tempo!',c:'good'});
+        if(oD.length>dev.length+1)notes.push({t:'Protivnik je bolje razvijen!',c:'bad'});
+        return{notes:notes,developed:dev.length,total:minors.length,castled:castled,undev:undev};
+    }
+    function analyzeKing(brd,pieces,pc){
+        var king=pieces[pc].find(function(p){return p.type==='k'});if(!king)return{notes:[],castled:false};
+        var notes=[],castled=(pc==='w'&&(king.sq==='g1'||king.sq==='c1'))||(pc==='b'&&(king.sq==='g8'||king.sq==='c8'));
+        if(castled){
+            var shR=pc==='w'?king.row-1:king.row+1,shield=0;
+            for(var dc=-1;dc<=1;dc++){var c=king.col+dc;if(c<0||c>7)continue;if(shR>=0&&shR<=7&&brd[shR][c]&&brd[shR][c].type==='p'&&brd[shR][c].color===pc)shield++}
+            if(shield>=3)notes.push({t:'Odli\u010Dan pe\u0161a\u010Dki \u0161tit.',c:'good'});
+            else if(shield>=2)notes.push({t:'Pe\u0161a\u010Dki \u0161tit ima rupu.',c:'warn'});
+            else notes.push({t:'Slab pe\u0161a\u010Dki \u0161tit!',c:'bad'});
+        }
+        for(var dc2=-1;dc2<=1;dc2++){var c2=king.col+dc2;if(c2<0||c2>7)continue;if(fileOpen(brd,c2)){notes.push({t:'Otvorena linija blizu kralja!',c:'warn'});break}}
+        var opH=pieces[opp(pc)].filter(function(p){return p.type==='q'||p.type==='r'||p.type==='b'||p.type==='n'});
+        var near=opH.filter(function(p){return Math.abs(p.row-king.row)<=2&&Math.abs(p.col-king.col)<=2});
+        if(near.length>=3)notes.push({t:'Protivnik koncentrije '+near.length+' figure oko kralja!',c:'bad'});
+        if(!castled&&king.col>=2&&king.col<=5&&(fileOpen(brd,3)||fileOpen(brd,4)))notes.push({t:'Kralj u centru sa otvorenim linijama!',c:'bad'});
+        if(notes.length===0)notes.push({t:'Kralj je bezbedan.',c:'neutral'});
+        return{notes:notes,castled:castled};
+    }
+    function analyzeCenter(brd,pieces,pc){
+        var wC=0,bC=0;
+        CENTER.forEach(function(sq){var p=brd[sq.r][sq.c];if(p&&p.type==='p'){if(p.color==='w')wC+=3;else bC+=3}else if(p){if(p.color==='w')wC+=1;else bC+=1}});
+        pieces.w.filter(function(p){return p.type==='p'}).forEach(function(p){CENTER.forEach(function(sq){if(sq.r===p.row-1&&Math.abs(sq.c-p.col)===1)wC+=2})});
+        pieces.b.filter(function(p){return p.type==='p'}).forEach(function(p){CENTER.forEach(function(sq){if(sq.r===p.row+1&&Math.abs(sq.c-p.col)===1)bC+=2})});
+        pieces.w.filter(function(p){return p.type==='n'}).forEach(function(p){if(CENTER.some(function(sq){return sq.r===p.row&&sq.c===p.col}))wC+=2});
+        pieces.b.filter(function(p){return p.type==='n'}).forEach(function(p){if(CENTER.some(function(sq){return sq.r===p.row&&sq.c===p.col}))bC+=2});
+        var my=pc==='w'?wC:bC,op=pc==='w'?bC:wC,notes=[];
+        if(my>op+3)notes.push({t:'Sna\u017Ena kontrola centra!',c:'good'});
+        else if(my>op+1)notes.push({t:'Dobra kontrola centra.',c:'good'});
+        else if(op>my+3)notes.push({t:'Protivnik dominira centrom!',c:'bad'});
+        else if(op>my+1)notes.push({t:'Protivnik ima vi\u0161e centra.',c:'warn'});
+        else notes.push({t:'Centar je uravnote\u017Een.',c:'neutral'});
+        return{notes:notes,my:my,op:op};
+    }
+    function analyzeActivity(brd,pieces,pc,phase){
+        var notes=[],rooks=pieces[pc].filter(function(p){return p.type==='r'}),bishops=pieces[pc].filter(function(p){return p.type==='b'}),knights=pieces[pc].filter(function(p){return p.type==='n'});
+        var opBishops=pieces[opp(pc)].filter(function(p){return p.type==='b'});
+        // Rook analysis: skip in opening (rooks rarely active)
+        if(phase!=='opening'){
+            rooks.forEach(function(r){if(fileOpen(brd,r.col))notes.push({t:'Top '+r.sq+' na otvorenoj liniji!',c:'good'});else if(fileSemiOpen(brd,r.col,pc))notes.push({t:'Top '+r.sq+' na polu-otvorenoj liniji.',c:'neutral'})});
+            var sevR=pc==='w'?1:6;rooks.forEach(function(r){if(r.row===sevR)notes.push({t:'Top '+r.sq+' na 7. redu!',c:'good'})});
+        }
+        // Bishop pair: only mention when opponent has lost a bishop
+        if(bishops.length===2&&opBishops.length<2)notes.push({t:'Par lovaca \u2014 prednost u otvorenim pozicijama!',c:'good'});
+        // Bad bishop: only in middlegame+ when pawn structure is established
+        if(phase!=='opening'){
+            bishops.forEach(function(b){var bSC=(b.row+b.col)%2,myP=pieces[pc].filter(function(p){return p.type==='p'});if(myP.filter(function(p){return(p.row+p.col)%2===bSC}).length>=4)notes.push({t:'Lovac '+b.sq+' blokiran pe\u0161acima.',c:'warn'})});
+        }
+        // Knight activity
+        knights.forEach(function(n){
+            var backR=pc==='w'?7:0;
+            if(n.row===backR)return; // skip undeveloped knights, handled by analyzeDev
+            if(n.col===0||n.col===7)notes.push({t:'Konj '+n.sq+' na ivici!',c:'warn'});
+            else if(CENTER.some(function(sq){return sq.r===n.row&&sq.c===n.col}))notes.push({t:'Konj '+n.sq+' centralizovan!',c:'good'});
+        });
+        // Back rank mate: only in middlegame+ when opponent has castled and we have attacking pieces
+        if(phase!=='opening'){
+            var opK=pieces[opp(pc)].find(function(p){return p.type==='k'});
+            var opCastled=opK&&((opp(pc)==='w'&&(opK.sq==='g1'||opK.sq==='c1'||opK.sq==='h1'||opK.sq==='b1'))||(opp(pc)==='b'&&(opK.sq==='g8'||opK.sq==='c8'||opK.sq==='h8'||opK.sq==='b8')));
+            if(opK&&opCastled){
+                var obR=opp(pc)==='w'?7:0,eD=opp(pc)==='w'?-1:1,eR=opK.row+eD,bl=0;
+                for(var ed=-1;ed<=1;ed++){var ec=opK.col+ed;if(ec<0||ec>7)continue;if(eR>=0&&eR<=7&&brd[eR][ec]&&brd[eR][ec].color===opp(pc))bl++}
+                if(bl>=2&&(rooks.length>0||pieces[pc].some(function(p){return p.type==='q'})))
+                    notes.push({t:'Protivnikov kralj zarobljen na zadnjem redu \u2014 mat mogu\u0107!',c:'good'});
+            }
+        }
+        return{notes:notes};
+    }
+    function analyzeSpace(brd,pieces,pc){
+        var myS=0,opS=0;
+        pieces[pc].filter(function(p){return p.type==='p'}).forEach(function(p){if((pc==='w'&&p.row<4)||(pc==='b'&&p.row>=4))myS++});
+        pieces[opp(pc)].filter(function(p){return p.type==='p'}).forEach(function(p){if((opp(pc)==='w'&&p.row<4)||(opp(pc)==='b'&&p.row>=4))opS++});
+        var notes=[];
+        if(myS>opS+3)notes.push({t:'Prostorna prednost!',c:'good'});
+        else if(opS>myS+3)notes.push({t:'Protivnik ima vi\u0161e prostora.',c:'warn'});
+        return{notes:notes};
+    }
+    function analyzeTactics(brd,pieces,pc){
+        var notes=[],myM=0,opM=0;
+        pieces[pc].forEach(function(p){myM+=PVAL[p.type]});pieces[opp(pc)].forEach(function(p){opM+=PVAL[p.type]});
+        var d=myM-opM;
+        if(d>=5)notes.push({t:'Velika prednost (+'+d+')! Razmenjuj figure.',c:'good'});
+        else if(d>=2)notes.push({t:'Prednost (+'+d+'). Pojednostavi.',c:'good'});
+        else if(d<=-5)notes.push({t:'U zaostatku ('+d+'). Tra\u017Ei komplikacije!',c:'bad'});
+        else if(d<=-2)notes.push({t:'Protivnik vodi ('+d+'). Komplikuj!',c:'warn'});
+        return{notes:notes,matDiff:d};
+    }
+    function getPhase(pieces,mc){
+        var mat=0;['w','b'].forEach(function(c){pieces[c].forEach(function(p){mat+=PVAL[p.type]||0})});
+        var hQ=pieces.w.some(function(p){return p.type==='q'})&&pieces.b.some(function(p){return p.type==='q'});
+        if(mc<=10&&mat>60)return'opening';if(mat<26||(!hQ&&mat<35))return'endgame';return'middlegame';
+    }
+    var PH_N={opening:'Otvaranje',middlegame:'Sredina igre',endgame:'Zavr\u0161nica'};
+
+    // Score computation
+    function computeScores(devA,kingA,centerA,pawnA,actA){
+        var ds=devA.total>0?Math.round(devA.developed/devA.total*100):100;if(devA.castled)ds=Math.min(100,ds+20);
+        var ks=60;kingA.notes.forEach(function(n){if(n.c==='good')ks+=12;else if(n.c==='warn')ks-=10;else if(n.c==='bad')ks-=20});ks=Math.max(0,Math.min(100,ks));
+        var cs=Math.max(0,Math.min(100,50+(centerA.my-centerA.op)*8));
+        var ps=75;pawnA.notes.forEach(function(n){if(n.c==='warn')ps-=10;else if(n.c==='bad')ps-=18;else if(n.c==='good')ps+=5});ps=Math.max(0,Math.min(100,ps));
+        var as=55;actA.notes.forEach(function(n){if(n.c==='good')as+=10;else if(n.c==='warn')as-=8;else if(n.c==='bad')as-=15});as=Math.max(0,Math.min(100,as));
+        return{development:ds,kingSafety:ks,center:cs,pawnStructure:ps,activity:as};
+    }
+
+    // Plan generation
+    function genPlan(phase,devA,kingA,centerA,pawnA,actA,spaceA,tacA){
+        var plans=[];
+        if(phase==='opening'){
+            if(devA.undev&&devA.undev.length>0)plans.push('Razvij lake figure \u2014 konje na f3/c3, lovce na aktivne dijagonale');
+            if(!devA.castled)plans.push('Rokuraj da za\u0161titi\u0161 kralja');
+            if(centerA.my<=centerA.op)plans.push('Kontroli\u0161i centar pe\u0161acima (e4/d4 ili e5/d5)');
+            if(plans.length===0)plans.push('Pove\u017Ei topove i pripremi srednju igru');
+        }else if(phase==='middlegame'){
+            if(pawnA.opIso&&pawnA.opIso.length>0)plans.push('Napadni izolovane pe\u0161ake protivnika');
+            if(pawnA.myPass&&pawnA.myPass.length>0)plans.push('Guraj slobodne pe\u0161ake uz podr\u0161ku');
+            if(tacA&&tacA.matDiff>=2)plans.push('U prednosti \u2014 razmenjuj i pojednostavi');
+            if(tacA&&tacA.matDiff<=-2)plans.push('U zaostatku \u2014 napadi i komplikuj');
+            if(plans.length===0)plans.push('Pobolj\u0161aj najslabiju figuru');
+            if(plans.length<3)plans.push('Tra\u017Ei slabosti: izolovane pe\u0161ake, slaba polja');
+        }else{
+            if(pawnA.myPass&&pawnA.myPass.length>0)plans.push('Guraj slobodne pe\u0161ake ka promociji!');
+            plans.push('Aktiviraj kralja \u2014 u zavr\u0161nici je jak!');
+            if(tacA&&tacA.matDiff>=1)plans.push('Razmenjuj pe\u0161ake za slobodnog pe\u0161aka');
+            else plans.push('Centralizuj figure');
+        }
+        return plans.slice(0,3);
+    }
+
+    // Move feedback
+    function computeMoveFeedback(){
+        var hist=game.history({verbose:true});if(hist.length===0){moveFeedback=null;return}
+        var pM=null;for(var i=hist.length-1;i>=0;i--)if(hist[i].color===playerColor){pM=hist[i];break}
+        if(!pM){moveFeedback=null;return}
+        var delta=(curEval-evalBeforePlayerMove)*(playerColor==='w'?1:-1);
+        var fb={type:'ok',label:'',text:'',detail:''};
+        if(delta>40){fb.type='great';fb.label='Odli\u010Dan potez!'}
+        else if(delta>-10){fb.type='good';fb.label='Dobar potez.'}
+        else if(delta>-40){fb.type='ok';fb.label='Solidan potez.'}
+        else if(delta>-90){fb.type='inac';fb.label='Nepreciznost.'}
+        else if(delta>-200){fb.type='mistake';fb.label='Gre\u0161ka!'}
+        else{fb.type='blunder';fb.label='Ozbiljna gre\u0161ka!'}
+        fb.text='('+(delta>=0?'+':'')+((delta)/100).toFixed(1)+')';
+
+        var reasons=[],backR=playerColor==='w'?'1':'8',mc=hist.length,brd=game.board(),pieces=getAllPieces(brd);
+        if(pM.flags.indexOf('k')>=0)reasons.push('Rokada \u2014 kralj je bezbedan, top aktiviran.');
+        else if(pM.flags.indexOf('q')>=0)reasons.push('Duga rokada.');
+        if((pM.piece==='n'||pM.piece==='b')&&pM.from[1]===backR){var tR=8-parseInt(pM.to[1]),tC=FILES.indexOf(pM.to[0]);reasons.push(CENTER.some(function(sq){return sq.r===tR&&sq.c===tC})?'Razvoj na centralno polje!':'Razvoj lake figure.')}
+        if(pM.piece==='p'&&(pM.to==='e4'||pM.to==='d4'||pM.to==='e5'||pM.to==='d5'))reasons.push('Pe\u0161ak u centru \u2014 kontrola klju\u010Dnih polja.');
+        if(pM.piece==='r'&&fileOpen(brd,FILES.indexOf(pM.to[0])))reasons.push('Top na otvorenu liniju!');
+        if(pM.piece==='q'&&mc<=12)reasons.push('Rani izlazak dame \u2014 rizik od gubitka tempa.');
+        if(pM.piece==='p'&&mc<=14){var dA=analyzeDev(pieces,playerColor);if(dA.undev&&dA.undev.length>=2&&pM.to!=='e4'&&pM.to!=='d4'&&pM.to!=='e5'&&pM.to!=='d5')reasons.push('Pe\u0161a\u010Dki potez dok figure \u010Dekaju \u2014 razvoj pre napada!')}
+        if(pM.piece==='n'){var nc=FILES.indexOf(pM.to[0]);if(nc===0||nc===7)reasons.push('Konj na ivici \u2014 kontroli\u0161e upola manje polja.')}
+        if(pM.captured){var myV=PVAL[pM.piece],cV=PVAL[pM.captured];if(cV>myV+1)reasons.push('Osvojena vrednija figura!');else if(cV<myV-1)reasons.push('\u017Drtva materijala ('+PN[pM.piece]+' za '+PN[pM.captured]+').')}
+        if(pM.flags.indexOf('e')>=0)reasons.push('En passant!');
+        if(reasons.length===0&&delta<-40)reasons.push('Pozicija se pogor\u0161ala. Da li je neka figura neubranjena? Da li protivnik preti ne\u0161to?');
+        if(reasons.length===0&&delta>20)reasons.push(PN[pM.piece]+' na '+pM.to+' \u2014 pobolj\u0161ava poziciju.');
+        if(reasons.length===0)reasons.push(PN[pM.piece]+' na '+pM.to+'.');
+        fb.detail=reasons.join(' ');moveFeedback=fb;
+    }
+
+    // Coach rendering
+    function renderCoach(){
+        var brd=game.board(),pieces=getAllPieces(brd),mc=game.history().length;
+        var phase=getPhase(pieces,mc),pc=playerColor;
+        var pawnA=analyzePawns(brd,pieces,pc),devA=analyzeDev(pieces,pc),kingA=analyzeKing(brd,pieces,pc);
+        var centerA=analyzeCenter(brd,pieces,pc),actA=analyzeActivity(brd,pieces,pc,phase),spaceA=analyzeSpace(brd,pieces,pc);
+        var tacA=analyzeTactics(brd,pieces,pc),plans=genPlan(phase,devA,kingA,centerA,pawnA,actA,spaceA,tacA);
+        var scores=computeScores(devA,kingA,centerA,pawnA,actA);
+        var opDevA=analyzeDev(pieces,opp(pc)),opKingA=analyzeKing(brd,pieces,opp(pc)),opPawnA=analyzePawns(brd,pieces,opp(pc)),opActA=analyzeActivity(brd,pieces,opp(pc),phase);
+
+        var h='';
+
+        // Hint display
+        if(hintText){
+            h+='<div class="hint-box"><div class="hint-title">\u2139 Hint</div>';
+            h+='<div class="hint-move">'+escH(hintText.move)+'</div>';
+            h+='<div class="hint-why">'+escH(hintText.why)+'</div>';
+            h+='</div>';
+        }
+
+        // Threats
+        if(threats.length>0){
+            h+='<div class="threat-box"><div class="threat-title">\u26A0 Pazi!</div>';
+            threats.forEach(function(t){h+='<div class="threat-item'+(t.sev==='warn'?' warn':'')+'">'+escH(t.text)+'</div>'});
+            h+='</div>';
+        }
+
+        // Retry
+        if(canRetry){
+            h+='<div class="retry-box"><div class="retry-msg">To nije bio najbolji potez. Poku\u0161aj ponovo?</div>';
+            h+='<div class="retry-hint">'+escH(retryHint)+'</div>';
+            h+='<button class="btn retry" onclick="window._retry()">&#8634; Poku\u0161aj ponovo</button> ';
+            h+='<button class="btn" onclick="window._skipRetry()">Nastavi &rarr;</button></div>';
+        }
+
+        // Move feedback
+        if(moveFeedback&&mc>0&&!canRetry){
+            h+='<div class="coach-quote cq-'+moveFeedback.type+'"><span class="cq-label '+moveFeedback.type+'">'+escH(moveFeedback.label)+'</span>';
+            h+='<span style="color:#888;font-size:.73rem">'+escH(moveFeedback.text)+'</span><br>'+escH(moveFeedback.detail)+'</div>';
+        }else if(mc===0){
+            h+='<div class="coach-quote">Nova partija! Kontroli\u0161i centar, razvij lake figure, rokuraj.</div>';
+        }
+
+        // Opening
+        var opName=getOpeningName();
+        if(opName){
+            h+='<div class="opening-tag"><span class="opening-name">'+escH(opName)+'</span>';
+            if(lichessData){var tot=lichessData.white+lichessData.draws+lichessData.black;if(tot>50){var wP=Math.round(lichessData.white/tot*100),dP=Math.round(lichessData.draws/tot*100),bP=100-wP-dP;h+='<span class="opening-stats"><span class="os-w">'+wP+'%</span><span class="os-d">'+dP+'%</span><span class="os-b">'+bP+'%</span></span>'}}
+            h+='</div>';
+        }
+
+        h+='<div class="coach-phase">'+PH_N[phase]+'</div>';
+
+        // Scores
+        h+='<div class="scores-wrap">';
+        h+=scoreBar('\u265A Kralj',scores.kingSafety);
+        if(phase==='opening'||mc<20)h+=scoreBar('\u265E Razvoj',scores.development);
+        h+=scoreBar('\u229E Centar',scores.center);
+        h+=scoreBar('\u265F Struktura',scores.pawnStructure);
+        h+=scoreBar('\u265C Aktivnost',scores.activity);
+        h+='</div>';
+
+        // Two-column analysis
+        var mySt=[],myWk=[],oppWk=[];
+        [].concat(devA.notes,kingA.notes,centerA.notes,pawnA.notes,actA.notes,spaceA.notes,tacA.notes).forEach(function(n){if(n.c==='good')mySt.push(n.t);else if(n.c==='warn'||n.c==='bad')myWk.push(n.t)});
+        [].concat(opPawnA.notes,opDevA.notes,opKingA.notes,opActA.notes).forEach(function(n){if(n.c==='warn'||n.c==='bad')oppWk.push(n.t)});
+
+        h+='<div class="analysis-cols"><div class="analysis-col"><div class="analysis-col-hdr mine">Tvoja pozicija</div>';
+        if(mySt.length>0)mySt.slice(0,3).forEach(function(s){h+='<div class="c-note good">\u2713 '+escH(s)+'</div>'});
+        if(myWk.length>0)myWk.slice(0,3).forEach(function(s){h+='<div class="c-note warn">\u26A0 '+escH(s)+'</div>'});
+        if(mySt.length===0&&myWk.length===0)h+='<div class="c-note neutral">Solidna pozicija.</div>';
+        h+='</div><div class="analysis-col"><div class="analysis-col-hdr opp">Protivnik</div>';
+        if(oppWk.length>0)oppWk.slice(0,4).forEach(function(s){h+='<div class="c-note good">\u2139 '+escH(s)+'</div>'});
+        else h+='<div class="c-note neutral">Nema o\u010Diglednih slabosti.</div>';
+        h+='</div></div>';
+
+        // Lichess explorer placeholder
+        h+='<div id="lichess-explorer"></div>';
+
+        // Tablebase placeholder
+        h+='<div id="tb-info"></div>';
+
+        // PV
+        if(currentPV&&mc>0){var pvS=pvToSAN(currentPV,8);if(pvS){var evTxt=Math.abs(curEval)>=9000?(curEval>0?'+':'-')+'M':((curEval>=0?'+':'')+((curEval)/100).toFixed(1));h+='<div class="pv-box"><div class="pv-title">\u25B8 Najbolja linija</div><div class="pv-line">'+escH(pvS)+'<span class="pv-eval"> '+escH(evTxt)+'</span></div></div>'}}
+
+        // Plan
+        if(plans.length>0){h+='<div class="c-sec"><div class="c-sec-t">\u25B8 Plan</div><ul class="c-plan">'+plans.map(function(p){return'<li>'+escH(p)+'</li>'}).join('')+'</ul></div>'}
+
+        $('coach').innerHTML=h;
+        $('coach').scrollTop=0;
+        if(lichessData)updateCoachLichess();
+        if(tbData)updateCoachTB();
+    }
+
+    function scoreBar(lbl,val){
+        var cls=val>=65?'sf-good':(val>=35?'sf-ok':'sf-bad');
+        var txt=val>=75?'Odli\u010Dno':(val>=55?'Dobro':(val>=35?'OK':'Slabo'));
+        return'<div class="score-row"><span class="score-label">'+lbl+'</span><div class="score-bar"><div class="score-fill '+cls+'" style="width:'+val+'%"></div></div><span class="score-val">'+txt+'</span></div>';
+    }
+
+    // Global handlers for retry buttons
+    window._retry=function(){doRetry()};
+    window._skipRetry=function(){canRetry=false;renderCoach()};
+
+    // Controls
+    function startNewGame(color){
+        playerColor=color;flipped=(color==='b');game=new Chess();
+        selected=null;lastMove=null;hintMove=null;thinking=false;curEval=0;pendingBest=null;
+        evalBeforePlayerMove=0;moveFeedback=null;currentPV='';pvDepth=0;threats=[];canRetry=false;
+        lichessData=null;tbData=null;
+        $('think').classList.remove('on');
+        applyDiff();updateEvalBar();updateLabels();renderBoard();updateMoves();updateCaptured();updateStatus();renderCoach();
+        fetchLichessData();
+        if(playerColor==='b')setTimeout(reqComputer,200);
+    }
+    function undoMove(){
+        if(thinking||game.history().length===0)return;
+        game.undo();if(game.history().length>0&&game.turn()!==playerColor)game.undo();
+        var h=game.history({verbose:true});
+        lastMove=h.length>0?{from:h[h.length-1].from,to:h[h.length-1].to}:null;
+        selected=null;hintMove=null;canRetry=false;afterMove();
+    }
+    function reqHint(){
+        if(!sfReady||thinking||game.game_over()||game.turn()!==playerColor)return;
+        isHintCalc=true;
+        engineGo(15,function(best){
+            isHintCalc=false;
+            if(!best||best==='(none)')return;
+            var from=best.substring(0,2),to=best.substring(2,4),promo=best.length>4?best[4]:undefined;
+            hintMove={from:from,to:to};
+            // Generate hint explanation
+            var brd=game.board(),fc=s2c(from),piece=brd[fc.r][fc.c];
+            var tc=s2c(to),target=brd[tc.r][tc.c];
+            // Try making the move temporarily to get SAN
+            var san='';
+            try{var tmpG=new Chess(game.fen());var mv=tmpG.move({from:from,to:to,promotion:promo});if(mv)san=mv.san}catch(e){}
+            var why=getHintExplanation(piece,from,to,target,san,brd);
+            hintText={move:san||from+to,why:why};
+            renderBoard();renderCoach();
+            setTimeout(function(){hintMove=null;hintText=null;renderBoard();renderCoach()},6000);
+        });
+    }
+    function getHintExplanation(piece,from,to,target,san,brd){
+        if(!piece)return'';
+        var pn=PN[piece.type],reasons=[];
+        // Capture
+        if(target)reasons.push('Uzima '+PN[target.type]+' na '+to+'!');
+        // Castling
+        if(piece.type==='k'&&Math.abs(FILES.indexOf(from[0])-FILES.indexOf(to[0]))>1){
+            reasons.push('Rokada \u2014 za\u0161titi kralja i aktiviraj topa.');return reasons.join(' ');
+        }
+        // Development
+        var backR=playerColor==='w'?'1':'8';
+        if((piece.type==='n'||piece.type==='b')&&from[1]===backR){
+            var tc2=s2c(to);
+            if(CENTER.some(function(sq){return sq.r===tc2.r&&sq.c===tc2.c}))reasons.push('Razvoj na centralno polje \u2014 maksimalna aktivnost.');
+            else reasons.push('Razvoj figure \u2014 svaka nova figura u igri daje tempo.');
+        }
+        // Center pawn
+        if(piece.type==='p'&&(to==='e4'||to==='d4'||to==='e5'||to==='d5'))reasons.push('Pe\u0161ak u centru \u2014 kontrola klju\u010Dnih polja.');
+        // Rook to open file
+        if(piece.type==='r'&&fileOpen(brd,FILES.indexOf(to[0])))reasons.push('Top na otvorenu liniju \u2014 kontroli\u0161e celu vertikalu.');
+        // Knight to center
+        if(piece.type==='n'){var tc3=s2c(to);if(CENTER.some(function(sq){return sq.r===tc3.r&&sq.c===tc3.c}))reasons.push('Konj u centru \u2014 kontroli\u0161e maksimalno polja.')}
+        // Pawn advance toward promotion
+        if(piece.type==='p'){var rk=parseInt(to[1]);if((playerColor==='w'&&rk>=6)||(playerColor==='b'&&rk<=3))reasons.push('Pe\u0161ak napreduje ka promociji!')}
+        // Generic
+        if(reasons.length===0)reasons.push(pn+' na '+to+' pobolj\u0161ava poziciju.');
+        return reasons.join(' ');
+    }
+
+    // Events
+    $('btn-new').addEventListener('click',function(){startNewGame(playerColor==='w'?'b':'w')});
+    $('btn-undo').addEventListener('click',undoMove);
+    $('btn-hint').addEventListener('click',reqHint);
+    $('btn-flip').addEventListener('click',function(){flipped=!flipped;updateLabels();renderBoard();updateCaptured();updateEvalBar()});
+    $('sel-diff').addEventListener('change',function(){applyDiff();updateLabels()});
+    document.addEventListener('keydown',function(e){
+        if(e.target!==document.body)return;
+        if(e.key==='z'&&(e.ctrlKey||e.metaKey)){e.preventDefault();undoMove()}
+        if(e.key==='h')reqHint();
+        if(e.key==='f'){flipped=!flipped;updateLabels();renderBoard();updateCaptured();updateEvalBar()}
+    });
+    window.addEventListener('resize',function(){calcBoardSize();renderBoard()});
+
+    // Init
+    calcBoardSize();
+    renderBoard();updateMoves();updateStatus();updateCaptured();updateLabels();renderCoach();
+    initEngine();fetchLichessData();
+
+    })();
+    </script>
+</body>
+</html>
