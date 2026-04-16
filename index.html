@@ -307,7 +307,7 @@
     // State
     var game=new Chess(),playerColor='w',flipped=false,selected=null,lastMove=null,hintMove=null;
     var stockfish=null,sfReady=false,thinking=false,curEval=0,pendingBest=null,promoData=null;
-    var evalBeforePlayerMove=0,moveFeedback=null,currentPV='',pvDepth=0,threats=[];
+    var evalBeforePlayerMove=0,moveFeedback=null,currentPV='',pvDepth=0,threats=[],threatDetails=[];
     var canRetry=false,retryHint='';
     var hintText=null,isHintCalc=false;
     var aiExplanation=null,aiLoading=false,aiMessages=[];
@@ -460,7 +460,7 @@
         game.undo();game.undo();
         var h=game.history({verbose:true});
         lastMove=h.length>0?{from:h[h.length-1].from,to:h[h.length-1].to}:null;
-        selected=null;hintMove=null;canRetry=false;moveFeedback=null;threats=[];
+        selected=null;hintMove=null;canRetry=false;moveFeedback=null;threats=[];threatDetails=[];
         afterMove();
     }
     function showPromo(from,to){
@@ -545,7 +545,7 @@
 
     // Threat detection with strategic explanations
     function detectAllThreats(){
-        threats=[];
+        threats=[];threatDetails=[];
         if(game.game_over()||game.turn()!==playerColor)return;
         var fen=game.fen(),parts=fen.split(' ');
         parts[1]=opp(playerColor);parts[3]='-';
@@ -623,6 +623,11 @@
                     sev:'bad'
                 });
             }
+            // Store detailed threat info for AI prompt
+            threatened.forEach(function(ti){
+                var escSqs=myMoves.filter(function(m2){return m2.from===ti.sq}).map(function(m2){return m2.to});
+                threatDetails.push({sq:ti.sq,piece:ti.piece,pieceName:PN[ti.piece],pieceVal:ti.pieceVal,attackers:ti.attackers.map(function(a){return{piece:PN[a.piece],from:a.from}}),escapes:escSqs,canRecap:ti.canRecap,canEvade:ti.canEvade,sev:ti.sev});
+            });
             // Add individual threats
             threatened.forEach(function(ti){threats.push({text:ti.text,sev:ti.sev})});
         }catch(e){}
@@ -1017,7 +1022,7 @@
     function startNewGame(color){
         playerColor=color;flipped=(color==='b');game=new Chess();
         selected=null;lastMove=null;hintMove=null;thinking=false;curEval=0;pendingBest=null;
-        evalBeforePlayerMove=0;moveFeedback=null;currentPV='';pvDepth=0;threats=[];canRetry=false;
+        evalBeforePlayerMove=0;moveFeedback=null;currentPV='';pvDepth=0;threats=[];threatDetails=[];canRetry=false;
         lichessData=null;tbData=null;
         $('think').classList.remove('on');
         applyDiff();updateEvalBar();updateLabels();renderBoard();updateMoves();updateCaptured();updateStatus();renderCoach();
@@ -1092,18 +1097,53 @@
         }
         var evTxt=Math.abs(curEval)>=9000?(curEval>0?'+':'-')+'M':((curEval>=0?'+':'')+((curEval)/100).toFixed(1));
         var opening=getOpeningName()||'';
+        // Build threat context for AI
+        var threatCtx='';
+        var hasUrgentThreat=false;
+        if(threatDetails.length>0){
+            threatCtx='\n⚠ AKTIVNE PRETNJE (HITNO):\n';
+            threatDetails.forEach(function(td){
+                var urgency=td.pieceVal>=5?'KRITICNO':'VAZNO';
+                if(td.pieceVal>=5)hasUrgentThreat=true;
+                threatCtx+=urgency+': '+td.pieceName+' na '+td.sq+' (vrednost: '+td.pieceVal+') je napadnut od: '+td.attackers.map(function(a){return a.piece+' sa '+a.from}).join(', ')+'.\n';
+                if(td.canEvade&&td.escapes.length>0){
+                    threatCtx+='  Moguca polja za bekstvo: '+td.escapes.join(', ')+'.\n';
+                }else if(!td.canEvade){
+                    threatCtx+='  Figura NE MOZE pobeci! Mora se braniti drugom figurom ili prihvatiti gubitak.\n';
+                }
+                if(td.canRecap)threatCtx+='  Moze se uzvratiti udarac (ali mozda sa gubitkom materijala).\n';
+            });
+            threatCtx+='\n';
+        }
+        var urgentInstr='';
+        if(hasUrgentThreat){
+            urgentInstr='NAJVAZNIJI PRIORITET: Tvoja figura visoke vrednosti je NAPADNUTA! Ovo je HITAN takticki problem koji ima prednost nad svim strateskim razmatranjima. '+
+                'Tvoji predlozi poteza MORAJU PRVO da rese ovu pretnju. Za svako polje bekstva objasni da li je bezbedno i zasto je stratesko dobro ili lose (kontrola centra, razvoj, bezbednost, aktivnost figure). '+
+                'Preporuci NAJBOLJE polje za bekstvo sa jasnim obrazlozenjem. Potezi koji ignorisu pretnju su NEDOPUSTIVI.\n\n';
+        }else if(threatDetails.length>0){
+            urgentInstr='VAZNO: Postoje aktivne pretnje na tabli! Tvoji predlozi poteza moraju da uzmu u obzir ove pretnje. Ne predlazi poteze koji ignorisu napadnute figure.\n\n';
+        }
         var prompt='Ti si iskusan \u0161ahovski trener. Tvoj u\u010Denik ima rating 1500 i \u017Eeli da dostigne 2000.\n\n'+
             'Pozicija (FEN): '+game.fen()+'\n'+
             'Potezi: '+moveStr.trim()+'\n'+
             (opening?'Otvaranje: '+opening+'\n':'')+
             'U\u010Denik igra '+(playerColor==='w'?'belim':'crnim')+' figurama.\n'+
-            'Evaluacija: '+evTxt+'\n\n'+
+            'Evaluacija: '+evTxt+'\n'+
+            threatCtx+
+            urgentInstr+
             'Objasni poziciju na srpskom jeziku. Budi konkretan:\n'+
-            '1. Kakva je pozicija i \u0161ta je klju\u010Dno za obe strane?\n'+
-            '2. Koji su najbolji potezi-kandidati i ZA\u0160TO? (objasni strategiju iza svakog)\n'+
-            '3. Na \u0161ta u\u010Denik treba da pazi? (pretnje, zamke, taktika)\n'+
-            '4. Koji je plan za narednih 3-5 poteza?\n\n'+
-            'Koristi \u0161ahovski \u017Eargon ali objasni koncepte. Budi direktan i prakti\u010Dan. Do 250 re\u010Di.\n'+
+            (hasUrgentThreat?
+                '1. HITNO: Koja figura je napadnuta i zasto je to kriticno?\n'+
+                '2. Koji je NAJBOLJI potez za resavanje pretnje? Analiziraj svako moguce polje za bekstvo — za svako reci da li je bezbedno (da li ce figura biti ponovo napadnuta) i koje strateske prednosti/mane ima (kontrola centra, razvoj ostalih figura, koordinacija, bezbednost kralja). JASNO preporuci jedan najbolji potez.\n'+
+                '3. Koji su ostali potezi-kandidati (drugi i treci najbolji) i zasto su losiji od najboljeg?\n'+
+                '4. Koji je plan za narednih 3-5 poteza nakon resavanja pretnje?\n\n'
+            :
+                '1. Kakva je pozicija i \u0161ta je klju\u010Dno za obe strane?\n'+
+                '2. Koji su najbolji potezi-kandidati i ZA\u0160TO? (objasni strategiju iza svakog)\n'+
+                '3. Na \u0161ta u\u010Denik treba da pazi? (pretnje, zamke, taktika)\n'+
+                '4. Koji je plan za narednih 3-5 poteza?\n\n'
+            )+
+            'Koristi \u0161ahovski \u017Eargon ali objasni koncepte. Budi direktan i prakti\u010Dan. Do 300 re\u010Di.\n'+
             'VA\u017DNO: Pi\u0161i gramaticki ispravno na srpskom. Koristi "beli/crni" umesto "belogov/crnogov". Za strane koristi "beli" i "crni" kao prideve (npr. "crni kontranapad", "bela pozicija", "plan za belog", "crni preti").\n'+
             'NOTACIJA: Koristi ISKLJUCIVO srpsku sahovsku notaciju: K=Kralj, D=Dama, T=Top, L=Lovac, S=Skakac (konj). Pesak nema oznaku. Primeri: Sf3 (skakac na f3), Ld3 (lovac na d3), De2 (dama na e2). NIKADA ne koristi J, N, B, Q, R - to nije srpska notacija.';
 
