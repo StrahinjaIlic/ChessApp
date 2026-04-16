@@ -71,6 +71,12 @@
         .ai-box .ai-content{font-size:.8rem;color:#d4d4d4;line-height:1.6;white-space:pre-wrap}
         .ai-box .ai-content strong{color:#7cc35d}
         .ai-box .ai-content em{color:#d4a017;font-style:normal}
+        .ai-chat{display:flex;gap:5px;margin-top:8px}
+        .ai-chat input{flex:1;padding:6px 8px;background:#141820;border:1px solid #2a4a7a;border-radius:4px;color:#d4d4d4;font-size:.78rem;outline:none}
+        .ai-chat input:focus{border-color:#4a6fa5}
+        .ai-chat input::placeholder{color:#555}
+        .ai-chat button{padding:5px 10px;background:#4a6fa5;color:#fff;border:none;border-radius:4px;font-size:.75rem;cursor:pointer}
+        .ai-chat button:hover{background:#5a8fc5}
         .btn:disabled{opacity:.3;cursor:not-allowed}
         .diff-row{padding:4px 10px 8px}
         .diff-row select{width:100%;padding:5px 7px;background:#2b2926;color:#e0e0e0;border:1px solid #3b3936;border-radius:4px;font-size:.8rem;cursor:pointer}
@@ -304,7 +310,7 @@
     var evalBeforePlayerMove=0,moveFeedback=null,currentPV='',pvDepth=0,threats=[];
     var canRetry=false,retryHint='';
     var hintText=null,isHintCalc=false;
-    var aiExplanation=null,aiLoading=false;
+    var aiExplanation=null,aiLoading=false,aiMessages=[];
     var lichessCache={},tbCache={},lichessData=null,tbData=null;
 
     // Helpers
@@ -564,8 +570,8 @@
                     if(capM.length>0){simG.move(capM[0]);canRecap=simG.moves({verbose:true}).some(function(m2){return m2.to===sq})}
                 }catch(e2){}
                 var canEvade=myMoves.some(function(m2){return m2.from===sq});
-                // Skip if attacker is worth more than target and piece can evade or is defended
-                if(minAV>pv&&(canEvade||canRecap))continue;
+                // Skip if attacker is worth >= target and piece can evade or is defended
+                if(minAV>=pv&&(canEvade||canRecap))continue;
                 // Build detailed threat info
                 var ti={sq:sq,piece:t.piece,pieceVal:pv,attackers:t.attackers,minAV:minAV,minAttacker:minAttacker,canRecap:canRecap,canEvade:canEvade};
                 // What is attacking it?
@@ -879,7 +885,15 @@
         if(pM.piece==='q'&&mc<=12)reasons.push('Rani izlazak dame \u2014 rizik od gubitka tempa.');
         if(pM.piece==='p'&&mc<=14){var dA=analyzeDev(pieces,playerColor);if(dA.undev&&dA.undev.length>=2&&pM.to!=='e4'&&pM.to!=='d4'&&pM.to!=='e5'&&pM.to!=='d5')reasons.push('Pe\u0161a\u010Dki potez dok figure \u010Dekaju \u2014 razvoj pre napada!')}
         if(pM.piece==='n'){var nc=FILES.indexOf(pM.to[0]);if(nc===0||nc===7)reasons.push('Konj na ivici \u2014 kontroli\u0161e upola manje polja.')}
-        if(pM.captured){var myV=PVAL[pM.piece],cV=PVAL[pM.captured];if(cV>myV+1)reasons.push('Osvojena vrednija figura!');else if(cV<myV-1)reasons.push('\u017Drtva materijala ('+PN[pM.piece]+' za '+PN[pM.captured]+').')}
+        if(pM.captured){var myV=PVAL[pM.piece],cV=PVAL[pM.captured];
+            // Check if this is a recapture
+            var pIdx=-1;for(var ri=0;ri<hist.length;ri++)if(hist[ri]===pM){pIdx=ri;break}
+            var isRecap=pIdx>0&&hist[pIdx-1].to===pM.to&&hist[pIdx-1].captured;
+            if(isRecap)reasons.push('Uzimanje nazad na '+pM.to+'.');
+            else if(cV>myV+1)reasons.push('Osvojena vrednija figura ('+PN[pM.captured]+')!');
+            else if(cV<myV-1&&delta<-20)reasons.push('Gubitak materijala: '+PN[pM.piece]+' ('+myV+') za '+PN[pM.captured]+' ('+cV+').');
+            else if(cV===myV)reasons.push('Razmena figura na '+pM.to+'.');
+        }
         if(pM.flags.indexOf('e')>=0)reasons.push('En passant!');
         if(reasons.length===0&&delta<-40)reasons.push('Pozicija se pogor\u0161ala. Da li je neka figura neubranjena? Da li protivnik preti ne\u0161to?');
         if(reasons.length===0&&delta>20)reasons.push(PN[pM.piece]+' na '+pM.to+' \u2014 pobolj\u0161ava poziciju.');
@@ -903,7 +917,8 @@
         if(aiLoading){
             h+='<div class="ai-box"><div class="ai-title">\u2728 AI Trener</div><div class="ai-content">Analiziram poziciju...</div></div>';
         }else if(aiExplanation){
-            h+='<div class="ai-box"><div class="ai-title">\u2728 AI Trener</div><div class="ai-content">'+escH(aiExplanation)+'</div></div>';
+            h+='<div class="ai-box"><div class="ai-title">\u2728 AI Trener</div><div class="ai-content">'+escH(aiExplanation)+'</div>';
+            h+='<div class="ai-chat"><input type="text" id="ai-followup" placeholder="Pitaj ne\u0161to... (npr. Objasni detaljnije, Kra\u0107e, Za\u0161to Sf3?)" onkeydown="if(event.key===\'Enter\')window._aiAsk()"><button onclick="window._aiAsk()">Pitaj</button></div></div>';
         }
 
         // Hint display
@@ -1092,14 +1107,14 @@
             'VA\u017DNO: Pi\u0161i gramaticki ispravno na srpskom. Koristi "beli/crni" umesto "belogov/crnogov". Za strane koristi "beli" i "crni" kao prideve (npr. "crni kontranapad", "bela pozicija", "plan za belog", "crni preti").\n'+
             'NOTACIJA: Koristi ISKLJUCIVO srpsku sahovsku notaciju: K=Kralj, D=Dama, T=Top, L=Lovac, S=Skakac (konj). Pesak nema oznaku. Primeri: Sf3 (skakac na f3), Ld3 (lovac na d3), De2 (dama na e2). NIKADA ne koristi J, N, B, Q, R - to nije srpska notacija.';
 
-        aiLoading=true;aiExplanation=null;
+        aiLoading=true;aiExplanation=null;aiMessages=[{role:'user',content:prompt}];
         $('btn-explain').classList.add('loading');$('btn-explain').textContent='Analiziram...';
         renderCoach();
 
         fetch('/api/explain',{
             method:'POST',
             headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({prompt:prompt})
+            body:JSON.stringify({messages:aiMessages})
         })
         .then(function(r){
             if(!r.ok){return r.json().then(function(err){throw new Error(err.error||'API greška ('+r.status+')');})}
@@ -1109,6 +1124,7 @@
             var text='';
             try{text=data.choices[0].message.content}catch(e){text='Nema odgovora od AI.'}
             aiExplanation=text;
+            aiMessages.push({role:'assistant',content:text});
         })
         .catch(function(e){aiExplanation='Gre\u0161ka: '+e.message})
         .finally(function(){
@@ -1117,6 +1133,36 @@
             renderCoach();
         });
     }
+
+    // AI Follow-up chat
+    window._aiAsk=function(){
+        var inp=$('ai-followup');if(!inp)return;
+        var q=inp.value.trim();if(!q||aiLoading)return;
+        aiMessages.push({role:'user',content:q});
+        aiLoading=true;aiExplanation=null;
+        renderCoach();
+
+        fetch('/api/explain',{
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({messages:aiMessages})
+        })
+        .then(function(r){
+            if(!r.ok){return r.json().then(function(err){throw new Error(err.error||'API greška ('+r.status+')');})}
+            return r.json();
+        })
+        .then(function(data){
+            var text='';
+            try{text=data.choices[0].message.content}catch(e){text='Nema odgovora od AI.'}
+            aiExplanation=text;
+            aiMessages.push({role:'assistant',content:text});
+        })
+        .catch(function(e){aiExplanation='Gre\u0161ka: '+e.message})
+        .finally(function(){
+            aiLoading=false;
+            renderCoach();
+        });
+    };
 
     // Events
     $('btn-new').addEventListener('click',function(){startNewGame(playerColor==='w'?'b':'w')});

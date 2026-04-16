@@ -9,9 +9,11 @@ export default async function handler(req, res) {
     }
 
     try {
-        const { prompt } = req.body;
-        if (!prompt || typeof prompt !== 'string') {
-            return res.status(400).json({ error: 'Missing prompt' });
+        const { messages, prompt } = req.body;
+        // Support both messages array and single prompt
+        const msgs = messages || (prompt ? [{ role: 'user', content: prompt }] : null);
+        if (!msgs || !Array.isArray(msgs) || msgs.length === 0) {
+            return res.status(400).json({ error: 'Missing messages or prompt' });
         }
 
         const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -22,7 +24,7 @@ export default async function handler(req, res) {
             },
             body: JSON.stringify({
                 model: 'llama-3.3-70b-versatile',
-                messages: [{ role: 'user', content: prompt }],
+                messages: msgs,
                 temperature: 0.3,
                 max_tokens: 800
             })
