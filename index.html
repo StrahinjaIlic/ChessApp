@@ -1092,7 +1092,7 @@
             body:JSON.stringify({prompt:prompt})
         })
         .then(function(r){
-            if(!r.ok){return r.json().then(function(err){throw new Error(err.error||'API gre\u0161ka ('+r.status+')');})}
+            if(!r.ok){return r.json().then(function(err){throw new Error(err.error||'API greška ('+r.status+')');})}
             return r.json();
         })
         .then(function(data){
