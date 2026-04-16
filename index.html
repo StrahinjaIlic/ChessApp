@@ -63,6 +63,14 @@
         .btn.pri:hover{background:#72a934}
         .btn.retry{background:#c06030;color:#fff}
         .btn.retry:hover{background:#d07040}
+        .btn.ai{background:#4a6fa5;color:#fff}
+        .btn.ai:hover{background:#5a8fc5}
+        .btn.ai.loading{opacity:.6;cursor:wait}
+        .ai-box{background:#1a2030;border:1px solid #2a4a7a;border-radius:6px;padding:10px 12px;margin-bottom:10px}
+        .ai-box .ai-title{font-weight:700;color:#6a9fd8;font-size:.76rem;margin-bottom:5px;display:flex;align-items:center;gap:5px}
+        .ai-box .ai-content{font-size:.8rem;color:#d4d4d4;line-height:1.6;white-space:pre-wrap}
+        .ai-box .ai-content strong{color:#7cc35d}
+        .ai-box .ai-content em{color:#d4a017;font-style:normal}
         .btn:disabled{opacity:.3;cursor:not-allowed}
         .diff-row{padding:4px 10px 8px}
         .diff-row select{width:100%;padding:5px 7px;background:#2b2926;color:#e0e0e0;border:1px solid #3b3936;border-radius:4px;font-size:.8rem;cursor:pointer}
@@ -206,6 +214,7 @@
                     <button class="btn pri" id="btn-new">Nova igra</button>
                     <button class="btn" id="btn-undo">&larr; Vrati</button>
                     <button class="btn" id="btn-hint">Hint</button>
+                    <button class="btn ai" id="btn-explain">Objasni</button>
                     <button class="btn" id="btn-flip">&updownarrow;</button>
                 </div>
                 <div class="diff-row">
@@ -295,6 +304,7 @@
     var evalBeforePlayerMove=0,moveFeedback=null,currentPV='',pvDepth=0,threats=[];
     var canRetry=false,retryHint='';
     var hintText=null,isHintCalc=false;
+    var aiExplanation=null,aiLoading=false;
     var lichessCache={},tbCache={},lichessData=null,tbData=null;
 
     // Helpers
@@ -393,7 +403,7 @@
     // Move handling
     function onSqClick(sq){
         if(thinking||game.game_over()||game.turn()!==playerColor)return;
-        hintMove=null;canRetry=false;
+        hintMove=null;canRetry=false;aiExplanation=null;
         var brd=game.board(),co=s2c(sq),piece=brd[co.r][co.c];
         if(selected){
             var legal=game.moves({square:selected,verbose:true});
@@ -880,6 +890,13 @@
 
         var h='';
 
+        // AI Explanation
+        if(aiLoading){
+            h+='<div class="ai-box"><div class="ai-title">\u2728 AI Trener</div><div class="ai-content">Analiziram poziciju...</div></div>';
+        }else if(aiExplanation){
+            h+='<div class="ai-box"><div class="ai-title">\u2728 AI Trener</div><div class="ai-content">'+escH(aiExplanation)+'</div></div>';
+        }
+
         // Hint display
         if(hintText){
             h+='<div class="hint-box"><div class="hint-title">\u2139 Hint</div>';
@@ -1039,10 +1056,68 @@
         return reasons.join(' ');
     }
 
+    // AI Explain
+    function getGeminiKey(){
+        var k=localStorage.getItem('gemini_key');
+        if(!k){k=prompt('Unesi Gemini API key (od aistudio.google.com):');if(k){localStorage.setItem('gemini_key',k.trim())}};
+        return k?k.trim():null;
+    }
+    function reqExplain(){
+        if(aiLoading)return;
+        var key=getGeminiKey();if(!key)return;
+        var hist=game.history();if(hist.length===0){aiExplanation='Odigraj bar jedan potez pa klikni Objasni.';renderCoach();return}
+        var moveStr='';
+        for(var i=0;i<hist.length;i+=2){
+            moveStr+=(Math.floor(i/2)+1)+'.'+hist[i];
+            if(i+1<hist.length)moveStr+=' '+hist[i+1];
+            moveStr+=' ';
+        }
+        var evTxt=Math.abs(curEval)>=9000?(curEval>0?'+':'-')+'M':((curEval>=0?'+':'')+((curEval)/100).toFixed(1));
+        var opening=getOpeningName()||'';
+        var prompt='Ti si iskusan \u0161ahovski trener. Tvoj u\u010Denik ima rating 1500 i \u017Eeli da dostigne 2000.\n\n'+
+            'Pozicija (FEN): '+game.fen()+'\n'+
+            'Potezi: '+moveStr.trim()+'\n'+
+            (opening?'Otvaranje: '+opening+'\n':'')+
+            'U\u010Denik igra '+(playerColor==='w'?'belim':'crnim')+' figurama.\n'+
+            'Evaluacija: '+evTxt+'\n\n'+
+            'Objasni poziciju na srpskom jeziku. Budi konkretan:\n'+
+            '1. Kakva je pozicija i \u0161ta je klju\u010Dno za obe strane?\n'+
+            '2. Koji su najbolji potezi-kandidati i ZA\u0160TO? (objasni strategiju iza svakog)\n'+
+            '3. Na \u0161ta u\u010Denik treba da pazi? (pretnje, zamke, taktika)\n'+
+            '4. Koji je plan za narednih 3-5 poteza?\n\n'+
+            'Koristi \u0161ahovski \u017Eargon ali objasni koncepte. Budi direktan i prakti\u010Dan. Do 250 re\u010Di.';
+
+        aiLoading=true;aiExplanation=null;
+        $('btn-explain').classList.add('loading');$('btn-explain').textContent='Analiziram...';
+        renderCoach();
+
+        fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key='+key,{
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})
+        })
+        .then(function(r){
+            if(!r.ok){if(r.status===401||r.status===403){localStorage.removeItem('gemini_key');throw new Error('Neispravan API key. Klikni ponovo da unese\u0161 novi.')}throw new Error('Gre\u0161ka: '+r.status)}
+            return r.json();
+        })
+        .then(function(data){
+            var text='';
+            try{text=data.candidates[0].content.parts[0].text}catch(e){text='Nema odgovora od AI.'}
+            aiExplanation=text;
+        })
+        .catch(function(e){aiExplanation='Gre\u0161ka: '+e.message})
+        .finally(function(){
+            aiLoading=false;
+            $('btn-explain').classList.remove('loading');$('btn-explain').textContent='Objasni';
+            renderCoach();
+        });
+    }
+
     // Events
     $('btn-new').addEventListener('click',function(){startNewGame(playerColor==='w'?'b':'w')});
     $('btn-undo').addEventListener('click',undoMove);
     $('btn-hint').addEventListener('click',reqHint);
+    $('btn-explain').addEventListener('click',reqExplain);
     $('btn-flip').addEventListener('click',function(){flipped=!flipped;updateLabels();renderBoard();updateCaptured();updateEvalBar()});
     $('sel-diff').addEventListener('change',function(){applyDiff();updateLabels()});
     document.addEventListener('keydown',function(e){
