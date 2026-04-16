@@ -178,6 +178,17 @@
         .promo-o{width:56px;height:56px;display:flex;align-items:center;justify-content:center;font-size:36px;background:#f0d9b5;border-radius:6px;cursor:pointer;transition:all .12s;border:2px solid transparent}
         .promo-o:hover{background:#829769;border-color:#629924}
 
+        .tactic-box{background:#1a2a2a;border:1px solid #2a6b5a;border-radius:5px;padding:7px 9px;margin-bottom:8px}
+        .tactic-box .tactic-title{font-weight:700;color:#48b5a0;font-size:.74rem;margin-bottom:3px;text-transform:uppercase;letter-spacing:.3px}
+        .tactic-box .tactic-item{padding:2px 0;font-size:.77rem;color:#a0e0d0}
+        .tactic-box .tactic-item.opp{color:#e5a0a0}
+        .hint-candidate{padding:4px 0;border-bottom:1px solid #1a3a5a}
+        .hint-candidate:last-child{border-bottom:none}
+        .hint-candidate.best{background:#1a2a3a;border-radius:3px;padding:4px 6px;margin:-2px -6px}
+        .hint-rank{color:#48b5ff;font-weight:700;font-size:.82rem}
+        .hint-eval{color:#629924;font-family:'SF Mono',Consolas,monospace;font-size:.78rem;font-weight:600;margin-left:4px}
+        .arrow-svg{position:absolute;top:0;left:17px;pointer-events:none;z-index:10}
+
         @media(max-width:960px){
             .main{flex-direction:column;align-items:center;padding:10px;gap:10px}
             .sidebar{width:100%;max-width:calc(var(--bs) + 17px);max-height:none}
@@ -310,6 +321,7 @@
     var evalBeforePlayerMove=0,moveFeedback=null,currentPV='',pvDepth=0,threats=[],threatDetails=[];
     var canRetry=false,retryHint='';
     var hintText=null,isHintCalc=false;
+    var tactics=[],arrows=[],multiPVResults=[],isMultiPV=false;
     var aiExplanation=null,aiLoading=false,aiMessages=[];
     var lichessCache={},tbCache={},lichessData=null,tbData=null;
 
@@ -359,7 +371,21 @@
     function onSF(e){
         var line=typeof e.data==='string'?e.data:'';
         if(line==='uciok'){sfReady=true;applyDiff()}
-        if(!isHintCalc){
+        if(isMultiPV){
+            var mpvM=line.match(/\bmultipv\s+(\d+)/),dM2=line.match(/\bdepth\s+(\d+)/),pvM2=line.match(/\bpv\s+(.+)$/);
+            var cpM2=line.match(/\bscore cp (-?\d+)/),mtM2=line.match(/\bscore mate (-?\d+)/);
+            if(mpvM&&dM2&&pvM2){
+                var pi=parseInt(mpvM[1]),dd=parseInt(dM2[1]),sv=0,im=false;
+                if(cpM2)sv=parseInt(cpM2[1]);
+                if(mtM2){sv=parseInt(mtM2[1]);im=true}
+                if(game.turn()==='b')sv=-sv;
+                var ex=multiPVResults.find(function(r){return r.pvIndex===pi});
+                if(!ex||dd>=ex.depth){
+                    if(ex){ex.pv=pvM2[1];ex.score=sv;ex.depth=dd;ex.isMate=im}
+                    else multiPVResults.push({pvIndex:pi,pv:pvM2[1],score:sv,depth:dd,isMate:im})
+                }
+            }
+        }else if(!isHintCalc){
             var m=line.match(/\bscore cp (-?\d+)/);
             if(m){var cp=parseInt(m[1]);if(game.turn()==='b')cp=-cp;curEval=cp;updateEvalBar()}
             m=line.match(/\bscore mate (-?\d+)/);
@@ -371,6 +397,13 @@
     }
     function applyDiff(){if(!stockfish||!sfReady)return;stockfish.postMessage('setoption name Skill Level value '+$('sel-diff').value)}
     function engineGo(depth,cb){if(!stockfish||!sfReady)return;pendingBest=cb;stockfish.postMessage('position fen '+game.fen());stockfish.postMessage('go depth '+depth)}
+    function engineGoMultiPV(depth,numPV,cb){
+        if(!stockfish||!sfReady)return;multiPVResults=[];isMultiPV=true;
+        pendingBest=function(bm){isMultiPV=false;stockfish.postMessage('setoption name MultiPV value 1');cb(multiPVResults,bm)};
+        stockfish.postMessage('position fen '+game.fen());
+        stockfish.postMessage('setoption name MultiPV value '+numPV);
+        stockfish.postMessage('go depth '+depth);
+    }
     function getDepth(){var l=parseInt($('sel-diff').value);return DMAP[l]||10}
 
     // Eval bar
@@ -451,8 +484,13 @@
         });
     }
     function afterMove(){
-        renderBoard();updateMoves();updateStatus();updateCaptured();
-        detectAllThreats();renderCoach();
+        currentPV='';pvDepth=0; // Reset stale PV from previous position
+        detectAllThreats();
+        var brd=game.board(),pieces=getAllPieces(brd);
+        detectTacticalMotifs(brd,pieces,playerColor);
+        updateArrows();
+        renderBoard();renderArrows();updateMoves();updateStatus();updateCaptured();
+        renderCoach();
         fetchLichessData();fetchTablebaseData();
     }
     function doRetry(){
@@ -460,7 +498,7 @@
         game.undo();game.undo();
         var h=game.history({verbose:true});
         lastMove=h.length>0?{from:h[h.length-1].from,to:h[h.length-1].to}:null;
-        selected=null;hintMove=null;canRetry=false;moveFeedback=null;threats=[];threatDetails=[];
+        selected=null;hintMove=null;canRetry=false;moveFeedback=null;threats=[];threatDetails=[];tactics=[];arrows=[];
         afterMove();
     }
     function showPromo(from,to){
@@ -832,6 +870,275 @@
     }
     var PH_N={opening:'Otvaranje',middlegame:'Sredina igre',endgame:'Zavr\u0161nica'};
 
+    function toSerbNotation(san){return san.replace(/^K/,'K').replace(/^Q/,'D').replace(/^R/,'T').replace(/^B/,'L').replace(/^N/,'S')}
+
+    // Tactical motif detection
+    function detectTacticalMotifs(brd,pieces,pc){
+        tactics=[];
+        var myMoves=game.moves({verbose:true});
+        // --- FORKS (opponent's and player's) ---
+        // Opponent forks: check if opponent has a piece attacking 2+ of our valuable pieces
+        try{
+            var fen=game.fen(),fp=fen.split(' ');fp[1]=opp(pc);fp[3]='-';
+            var tg=new Chess(fp.join(' '));
+            var opMoves=tg.moves({verbose:true});
+            // Group opponent attacks by source piece
+            var opAtk={};
+            opMoves.forEach(function(m){if(m.captured){if(!opAtk[m.from])opAtk[m.from]={piece:m.piece,targets:[]};opAtk[m.from].targets.push({sq:m.to,piece:m.captured,val:PVAL[m.captured]||0})}});
+            for(var sq in opAtk){
+                var a=opAtk[sq],vals=a.targets.filter(function(t){return t.val>=1});
+                if(vals.length>=2){
+                    var totalV=0;vals.forEach(function(t){totalV+=t.val});
+                    var attackerV=PVAL[a.piece]||0;
+                    if(totalV>attackerV+1){
+                        var tgts=vals.sort(function(x,y){return y.val-x.val}).slice(0,3).map(function(t){return PN[t.piece]+' '+t.sq});
+                        tactics.push({t:'Protivnikov '+PN[a.piece]+' sa '+sq+' preti vilju\u0161kom na: '+tgts.join(', ')+'!',c:'opp',from:sq,targets:vals.map(function(t){return t.sq})});
+                    }
+                }
+            }
+        }catch(e){}
+        // Player fork opportunities: simulate each move, check if new position attacks 2+ opponent pieces
+        myMoves.forEach(function(mv){
+            try{
+                var tmpG=new Chess(game.fen());tmpG.move(mv);
+                var fen2=tmpG.fen(),fp2=fen2.split(' ');fp2[1]=pc;fp2[3]='-';
+                var tg2=new Chess(fp2.join(' '));
+                var afterMoves=tg2.moves({verbose:true}).filter(function(m2){return m2.from===mv.to&&m2.captured});
+                if(afterMoves.length>=2){
+                    var vals2=afterMoves.filter(function(m2){return(PVAL[m2.captured]||0)>=1});
+                    if(vals2.length>=2){
+                        var totalV2=0;vals2.forEach(function(t){totalV2+=t.val||PVAL[t.captured]||0});
+                        var movedV=PVAL[mv.piece]||0;
+                        if(totalV2>movedV+1){
+                            var tgts2=vals2.sort(function(x,y){return(PVAL[y.captured]||0)-(PVAL[x.captured]||0)}).slice(0,3).map(function(t){return PN[t.captured]+' '+t.to});
+                            tactics.push({t:toSerbNotation(mv.san)+' \u2014 vilju\u0161ka! Napada: '+tgts2.join(', '),c:'my',from:mv.from,to:mv.to});
+                        }
+                    }
+                }
+            }catch(e){}
+        });
+        // --- PINS & SKEWERS (ray-casting) ---
+        var DIRS={b:[[-1,-1],[-1,1],[1,-1],[1,1]],r:[[-1,0],[1,0],[0,-1],[0,1]],q:[[-1,-1],[-1,1],[1,-1],[1,1],[-1,0],[1,0],[0,-1],[0,1]]};
+        function castRays(color,findPins){
+            var sliders=pieces[color].filter(function(p){return p.type==='b'||p.type==='r'||p.type==='q'});
+            var target=opp(color);
+            sliders.forEach(function(sl){
+                var dirs=DIRS[sl.type];
+                dirs.forEach(function(d){
+                    var first=null,second=null;
+                    for(var i=1;i<8;i++){
+                        var nr=sl.row+d[0]*i,nc=sl.col+d[1]*i;
+                        if(nr<0||nr>7||nc<0||nc>7)break;
+                        var p=brd[nr][nc];
+                        if(!p)continue;
+                        if(!first){first={type:p.type,color:p.color,row:nr,col:nc,sq:c2s(nr,nc),val:PVAL[p.type]||0};continue}
+                        second={type:p.type,color:p.color,row:nr,col:nc,sq:c2s(nr,nc),val:PVAL[p.type]||0};break;
+                    }
+                    if(!first||!second)return;
+                    if(first.color!==target||second.color!==target)return;
+                    var slV=PVAL[sl.type]||0;
+                    // PIN: first piece less valuable, second more valuable (or king)
+                    if(first.val<=second.val||second.type==='k'){
+                        if(second.type==='k'||second.val>first.val){
+                            if(color===opp(pc)){
+                                tactics.push({t:'Tvoj '+PN[first.type]+' na '+first.sq+' je vezan! '+PN[sl.type]+' sa '+sl.sq+' ga dr\u017Ei jer iza stoji '+PN[second.type]+' '+second.sq+'.',c:'opp',from:sl.sq,targets:[first.sq,second.sq]});
+                            }else{
+                                tactics.push({t:PN[sl.type]+' '+sl.sq+' ve\u017Ee protivni\u010Dkog '+PN[first.type]+' '+first.sq+' \u2014 iza njega je '+PN[second.type]+'!',c:'my',from:sl.sq,to:first.sq});
+                            }
+                        }
+                    }
+                    // SKEWER: first piece more valuable, second less valuable
+                    if(first.val>second.val&&first.type!=='k'){
+                        if(color===opp(pc)){
+                            tactics.push({t:PN[sl.type]+' sa '+sl.sq+' preti ra\u017Enjem! '+PN[first.type]+' '+first.sq+' mora be\u017Eati, pada '+PN[second.type]+' '+second.sq+'.',c:'opp',from:sl.sq,targets:[first.sq,second.sq]});
+                        }else{
+                            tactics.push({t:PN[sl.type]+' '+sl.sq+' pravi ra\u017Eanj: '+PN[first.type]+' '+first.sq+' \u2192 '+PN[second.type]+' '+second.sq,c:'my',from:sl.sq,to:first.sq});
+                        }
+                    }
+                });
+            });
+        }
+        castRays(opp(pc),true); // opponent pins/skewers on us
+        castRays(pc,true); // our pins/skewers on opponent
+        // --- DISCOVERED ATTACKS ---
+        var mySliders=pieces[pc].filter(function(p){return p.type==='b'||p.type==='r'||p.type==='q'});
+        mySliders.forEach(function(sl){
+            var dirs=DIRS[sl.type];
+            dirs.forEach(function(d){
+                var blocker=null,target2=null;
+                for(var i=1;i<8;i++){
+                    var nr=sl.row+d[0]*i,nc=sl.col+d[1]*i;
+                    if(nr<0||nr>7||nc<0||nc>7)break;
+                    var p=brd[nr][nc];
+                    if(!p)continue;
+                    if(!blocker){
+                        if(p.color===pc&&p.type!=='k'){blocker={type:p.type,row:nr,col:nc,sq:c2s(nr,nc)};continue}
+                        else break;
+                    }
+                    if(p.color===opp(pc)&&(PVAL[p.type]||0)>=3){target2={type:p.type,sq:c2s(nr,nc),val:PVAL[p.type]||0};break}
+                    else break;
+                }
+                if(!blocker||!target2)return;
+                // Check if blocker has legal moves off this ray
+                var bMoves=myMoves.filter(function(m){
+                    if(m.from!==blocker.sq)return false;
+                    var tc=s2c(m.to),dr=tc.r-sl.row,dc=tc.c-sl.col;
+                    if(dr===0&&dc===0)return true;
+                    var len=Math.max(Math.abs(dr),Math.abs(dc));
+                    var nd=Math.round(dr/len),ndc=Math.round(dc/len);
+                    return nd!==d[0]||ndc!==d[1]; // moves off the ray
+                });
+                if(bMoves.length>0){
+                    var isCheck=target2.type==='k';
+                    tactics.push({t:'Pomeri '+PN[blocker.type]+' sa '+blocker.sq+' \u2014 otkriveni napad '+PN[sl.type]+' na '+PN[target2.type]+' '+target2.sq+(isCheck?' (otkriveni \u0161ah!)':'!')
+                    ,c:'my',from:blocker.sq,to:bMoves[0].to});
+                }
+            });
+        });
+    }
+
+    // Strategic concept detection
+    function detectOutposts(brd,pieces,pc){
+        var notes=[],outposts=[];
+        var dir=pc==='w'?-1:1;
+        var enemyHalf=pc==='w'?[1,2,3]:[4,5,6];
+        for(var ri=0;ri<enemyHalf.length;ri++){
+            var r=enemyHalf[ri];
+            for(var c=0;c<8;c++){
+                var protR=r-dir;
+                var hasSup=false;
+                if(protR>=0&&protR<=7){
+                    for(var dc=-1;dc<=1;dc+=2){
+                        var pc2=c+dc;
+                        if(pc2>=0&&pc2<=7&&brd[protR][pc2]&&brd[protR][pc2].type==='p'&&brd[protR][pc2].color===pc){hasSup=true;break}
+                    }
+                }
+                if(!hasSup)continue;
+                var canBeAtk=false;
+                for(var dc2=-1;dc2<=1;dc2+=2){
+                    var adjC=c+dc2;if(adjC<0||adjC>7)continue;
+                    var scanDir=pc==='w'?-1:1;
+                    for(var sr=r+scanDir;sr>=0&&sr<=7;sr+=scanDir){
+                        if(brd[sr][adjC]&&brd[sr][adjC].type==='p'&&brd[sr][adjC].color===opp(pc)){canBeAtk=true;break}
+                    }
+                    if(canBeAtk)break;
+                }
+                if(canBeAtk)continue;
+                var occ=brd[r][c];
+                if(occ&&occ.color===pc&&(occ.type==='n'||occ.type==='b')){
+                    notes.push({t:PN[occ.type]+' na '+c2s(r,c)+' zauzima jak prednjak!',c:'good'});
+                }else if(!occ||occ.color!==pc){
+                    outposts.push(c2s(r,c));
+                }
+            }
+        }
+        if(outposts.length>0)notes.push({t:'Prednjaci: '+outposts.slice(0,4).join(', ')+' \u2014 postavi konja!',c:'good'});
+        return{notes:notes,outposts:outposts};
+    }
+    function detectWeakColor(brd,pieces,pc){
+        var notes=[];
+        var opB=pieces[opp(pc)].filter(function(p){return p.type==='b'});
+        var myB=pieces[pc].filter(function(p){return p.type==='b'});
+        if(opB.length===1){
+            var bC=(opB[0].row+opB[0].col)%2,missC=1-bC;
+            var missName=missC===0?'svetla':'tamna';
+            var opOnMiss=pieces[opp(pc)].filter(function(p){return p.type==='p'&&(p.row+p.col)%2===missC}).length;
+            if(opOnMiss>=3)notes.push({t:'Protivnik nema lovca za '+missName+' polja \u2014 slabost! Koristi ta polja.',c:'good'});
+        }
+        if(myB.length===1){
+            var myBC=(myB[0].row+myB[0].col)%2,myMissC=1-myBC;
+            var myMissName=myMissC===0?'svetla':'tamna';
+            var myOnMiss=pieces[pc].filter(function(p){return p.type==='p'&&(p.row+p.col)%2===myMissC}).length;
+            if(myOnMiss>=3)notes.push({t:'Nema\u0161 lovca za '+myMissName+' polja \u2014 pazi na dijagonale!',c:'warn'});
+        }
+        return{notes:notes};
+    }
+    function detectPosType(brd,pieces,pc){
+        var notes=[],locked=0;
+        for(var r=2;r<=5;r++)for(var c=2;c<=5;c++){
+            var p=brd[r][c];if(!p||p.type!=='p')continue;
+            var d2=p.color==='w'?-1:1,fr=r+d2;
+            if(fr<0||fr>7)continue;
+            if(brd[fr][c]&&brd[fr][c].type==='p'&&brd[fr][c].color!==p.color)locked++;
+        }
+        locked=Math.floor(locked/2);
+        var openF=0;for(var fc=0;fc<8;fc++)if(fileOpen(brd,fc))openF++;
+        var posT=locked>=3?'closed':(locked<=1&&openF>=3?'open':'semi');
+        var myB=pieces[pc].filter(function(p){return p.type==='b'}).length;
+        var myN=pieces[pc].filter(function(p){return p.type==='n'}).length;
+        if(posT==='closed'){
+            notes.push({t:'Zatvorena pozicija \u2014 konji su ja\u010Di od lovaca.',c:'neutral'});
+            if(myN>0&&myB>myN)notes.push({t:'Razmeni lovca za konja ako mo\u017Ee\u0161.',c:'neutral'});
+        }else if(posT==='open'){
+            notes.push({t:'Otvorena pozicija \u2014 lovci su ja\u010Di od konja.',c:'neutral'});
+            if(myB>=2)notes.push({t:'Par lovaca u otvorenoj poziciji \u2014 velika prednost!',c:'good'});
+        }
+        return{notes:notes,posType:posT};
+    }
+
+    // Arrow rendering
+    function renderArrows(){
+        var old=document.querySelector('.arrow-svg');if(old)old.remove();
+        if(arrows.length===0)return;
+        var wrap=document.querySelector('.board-wrap');if(!wrap)return;
+        var sqSize=parseInt(getComputedStyle(document.documentElement).getPropertyValue('--sq'))||70;
+        var bSize=sqSize*8;
+        var svgNS='http://www.w3.org/2000/svg';
+        var svg=document.createElementNS(svgNS,'svg');
+        svg.setAttribute('class','arrow-svg');svg.setAttribute('width',bSize);svg.setAttribute('height',bSize);
+        svg.setAttribute('viewBox','0 0 '+bSize+' '+bSize);
+        var defs=document.createElementNS(svgNS,'defs');
+        var cols={green:'rgba(98,153,36,0.9)',red:'rgba(229,85,85,0.9)',yellow:'rgba(212,160,23,0.9)',blue:'rgba(72,181,255,0.9)'};
+        for(var cn in cols){
+            var mk=document.createElementNS(svgNS,'marker');
+            mk.setAttribute('id','ah-'+cn);mk.setAttribute('markerWidth','8');mk.setAttribute('markerHeight','6');
+            mk.setAttribute('refX','7');mk.setAttribute('refY','3');mk.setAttribute('orient','auto');
+            var pg=document.createElementNS(svgNS,'polygon');pg.setAttribute('points','0 0, 8 3, 0 6');pg.setAttribute('fill',cols[cn]);
+            mk.appendChild(pg);defs.appendChild(mk);
+        }
+        svg.appendChild(defs);
+        arrows.forEach(function(a){
+            var fc=s2c(a.from),tc=s2c(a.to);
+            var fr=flipped?7-fc.r:fc.r,ffC=flipped?7-fc.c:fc.c;
+            var tr=flipped?7-tc.r:tc.r,tfC=flipped?7-tc.c:tc.c;
+            var x1=ffC*sqSize+sqSize/2,y1=fr*sqSize+sqSize/2;
+            var x2=tfC*sqSize+sqSize/2,y2=tr*sqSize+sqSize/2;
+            // Shorten arrow so head doesn't overshoot center
+            var dx=x2-x1,dy=y2-y1,len=Math.sqrt(dx*dx+dy*dy);
+            if(len>0){var sh=sqSize*0.25;x2-=dx/len*sh;y2-=dy/len*sh}
+            var ln=document.createElementNS(svgNS,'line');
+            ln.setAttribute('x1',x1);ln.setAttribute('y1',y1);ln.setAttribute('x2',x2);ln.setAttribute('y2',y2);
+            var color=a.color||'green';
+            ln.setAttribute('stroke',cols[color]||cols.green);
+            ln.setAttribute('stroke-width',Math.max(3,Math.round(sqSize*0.05)));
+            ln.setAttribute('stroke-linecap','round');ln.setAttribute('opacity','0.7');
+            ln.setAttribute('marker-end','url(#ah-'+color+')');
+            svg.appendChild(ln);
+        });
+        wrap.appendChild(svg);
+    }
+    function updateArrows(){
+        arrows=[];
+        // Green: best move from PV
+        if(currentPV){
+            var pvM=currentPV.trim().split(/\s+/);
+            if(pvM[0]&&pvM[0].length>=4)arrows.push({from:pvM[0].substring(0,2),to:pvM[0].substring(2,4),color:'green'});
+        }
+        // Red: opponent threats
+        threatDetails.forEach(function(td){
+            if(td.attackers&&td.attackers.length>0)arrows.push({from:td.attackers[0].from,to:td.sq,color:'red'});
+        });
+        // Yellow: tactic opportunities
+        tactics.filter(function(t){return t.c==='my'&&t.from&&t.to}).slice(0,2).forEach(function(t){
+            arrows.push({from:t.from,to:t.to,color:'yellow'});
+        });
+        // Blue: hint
+        if(hintMove){
+            arrows=arrows.filter(function(a){return!(a.from===hintMove.from&&a.to===hintMove.to)});
+            arrows.push({from:hintMove.from,to:hintMove.to,color:'blue'});
+        }
+    }
+
     // Score computation
     function computeScores(devA,kingA,centerA,pawnA,actA){
         var ds=devA.total>0?Math.round(devA.developed/devA.total*100):100;if(devA.castled)ds=Math.min(100,ds+20);
@@ -843,7 +1150,7 @@
     }
 
     // Plan generation
-    function genPlan(phase,devA,kingA,centerA,pawnA,actA,spaceA,tacA){
+    function genPlan(phase,devA,kingA,centerA,pawnA,actA,spaceA,tacA,outpostA,posTypeA){
         var plans=[];
         if(phase==='opening'){
             if(devA.undev&&devA.undev.length>0)plans.push('Razvij lake figure \u2014 konje na f3/c3, lovce na aktivne dijagonale');
@@ -851,19 +1158,22 @@
             if(centerA.my<=centerA.op)plans.push('Kontroli\u0161i centar pe\u0161acima (e4/d4 ili e5/d5)');
             if(plans.length===0)plans.push('Pove\u017Ei topove i pripremi srednju igru');
         }else if(phase==='middlegame'){
+            if(outpostA&&outpostA.outposts.length>0)plans.push('Postavi konja na prednjak: '+outpostA.outposts[0]);
             if(pawnA.opIso&&pawnA.opIso.length>0)plans.push('Napadni izolovane pe\u0161ake protivnika');
             if(pawnA.myPass&&pawnA.myPass.length>0)plans.push('Guraj slobodne pe\u0161ake uz podr\u0161ku');
             if(tacA&&tacA.matDiff>=2)plans.push('U prednosti \u2014 razmenjuj i pojednostavi');
             if(tacA&&tacA.matDiff<=-2)plans.push('U zaostatku \u2014 napadi i komplikuj');
+            if(posTypeA&&posTypeA.posType==='closed')plans.push('Zatvorena pozicija \u2014 centralizuj konje, tra\u017Ei proboj pe\u0161akom');
+            if(posTypeA&&posTypeA.posType==='open'&&plans.length<3)plans.push('Otvorena pozicija \u2014 aktiviraj lovce i topove');
             if(plans.length===0)plans.push('Pobolj\u0161aj najslabiju figuru');
-            if(plans.length<3)plans.push('Tra\u017Ei slabosti: izolovane pe\u0161ake, slaba polja');
+            if(plans.length<3)plans.push('Tra\u017Ei slabosti: izolovane pe\u0161ake, slaba polja, prednjake');
         }else{
             if(pawnA.myPass&&pawnA.myPass.length>0)plans.push('Guraj slobodne pe\u0161ake ka promociji!');
             plans.push('Aktiviraj kralja \u2014 u zavr\u0161nici je jak!');
             if(tacA&&tacA.matDiff>=1)plans.push('Razmenjuj pe\u0161ake za slobodnog pe\u0161aka');
             else plans.push('Centralizuj figure');
         }
-        return plans.slice(0,3);
+        return plans.slice(0,4);
     }
 
     // Move feedback
@@ -912,7 +1222,11 @@
         var phase=getPhase(pieces,mc),pc=playerColor;
         var pawnA=analyzePawns(brd,pieces,pc),devA=analyzeDev(pieces,pc),kingA=analyzeKing(brd,pieces,pc);
         var centerA=analyzeCenter(brd,pieces,pc),actA=analyzeActivity(brd,pieces,pc,phase),spaceA=analyzeSpace(brd,pieces,pc);
-        var tacA=analyzeTactics(brd,pieces,pc),plans=genPlan(phase,devA,kingA,centerA,pawnA,actA,spaceA,tacA);
+        var tacA=analyzeTactics(brd,pieces,pc);
+        var outpostA=phase!=='opening'?detectOutposts(brd,pieces,pc):{notes:[],outposts:[]};
+        var colorA=detectWeakColor(brd,pieces,pc);
+        var posTypeA=detectPosType(brd,pieces,pc);
+        var plans=genPlan(phase,devA,kingA,centerA,pawnA,actA,spaceA,tacA,outpostA,posTypeA);
         var scores=computeScores(devA,kingA,centerA,pawnA,actA);
         var opDevA=analyzeDev(pieces,opp(pc)),opKingA=analyzeKing(brd,pieces,opp(pc)),opPawnA=analyzePawns(brd,pieces,opp(pc)),opActA=analyzeActivity(brd,pieces,opp(pc),phase);
 
@@ -928,10 +1242,21 @@
 
         // Hint display
         if(hintText){
-            h+='<div class="hint-box"><div class="hint-title">\u2139 Hint</div>';
-            h+='<div class="hint-move">'+escH(hintText.move)+'</div>';
-            h+='<div class="hint-why">'+escH(hintText.why)+'</div>';
-            h+='</div>';
+            if(hintText.isMulti&&hintText.lines){
+                h+='<div class="hint-box"><div class="hint-title">\u2139 Kandidati (Top '+hintText.lines.length+')</div>';
+                hintText.lines.forEach(function(ln,idx){
+                    h+='<div class="hint-candidate'+(idx===0?' best':'')+'">';
+                    h+='<span class="hint-rank">'+(idx+1)+'.</span> ';
+                    h+='<span class="hint-move">'+escH(ln.move)+'</span>';
+                    h+='<span class="hint-eval">'+escH(ln.eval)+'</span>';
+                    h+='<div class="hint-why">'+escH(ln.why)+'</div></div>';
+                });
+                h+='</div>';
+            }else{
+                h+='<div class="hint-box"><div class="hint-title">\u2139 Hint</div>';
+                h+='<div class="hint-move">'+escH(hintText.move)+'</div>';
+                h+='<div class="hint-why">'+escH(hintText.why)+'</div></div>';
+            }
         }
 
         // Threats
@@ -939,6 +1264,22 @@
             h+='<div class="threat-box"><div class="threat-title">\u26A0 Pazi!</div>';
             threats.forEach(function(t){h+='<div class="threat-item'+(t.sev==='warn'?' warn':'')+'">'+escH(t.text)+'</div>'});
             h+='</div>';
+        }
+
+        // Tactical motifs
+        if(tactics.length>0){
+            var myTac=tactics.filter(function(t){return t.c==='my'});
+            var opTac=tactics.filter(function(t){return t.c==='opp'});
+            if(opTac.length>0){
+                h+='<div class="threat-box"><div class="threat-title">\u26A0 Taktika protivnika</div>';
+                opTac.slice(0,3).forEach(function(t){h+='<div class="threat-item">'+escH(t.t)+'</div>'});
+                h+='</div>';
+            }
+            if(myTac.length>0){
+                h+='<div class="tactic-box"><div class="tactic-title">\u2694 Tvoje mogu\u0107nosti</div>';
+                myTac.slice(0,3).forEach(function(t){h+='<div class="tactic-item">'+escH(t.t)+'</div>'});
+                h+='</div>';
+            }
         }
 
         // Retry
@@ -978,7 +1319,7 @@
 
         // Two-column analysis
         var mySt=[],myWk=[],oppWk=[];
-        [].concat(devA.notes,kingA.notes,centerA.notes,pawnA.notes,actA.notes,spaceA.notes,tacA.notes).forEach(function(n){if(n.c==='good')mySt.push(n.t);else if(n.c==='warn'||n.c==='bad')myWk.push(n.t)});
+        [].concat(devA.notes,kingA.notes,centerA.notes,pawnA.notes,actA.notes,spaceA.notes,tacA.notes,outpostA.notes,colorA.notes,posTypeA.notes).forEach(function(n){if(n.c==='good')mySt.push(n.t);else if(n.c==='warn'||n.c==='bad')myWk.push(n.t)});
         [].concat(opPawnA.notes,opDevA.notes,opKingA.notes,opActA.notes).forEach(function(n){if(n.c==='warn'||n.c==='bad')oppWk.push(n.t)});
 
         h+='<div class="analysis-cols"><div class="analysis-col"><div class="analysis-col-hdr mine">Tvoja pozicija</div>';
@@ -1023,9 +1364,10 @@
         playerColor=color;flipped=(color==='b');game=new Chess();
         selected=null;lastMove=null;hintMove=null;thinking=false;curEval=0;pendingBest=null;
         evalBeforePlayerMove=0;moveFeedback=null;currentPV='';pvDepth=0;threats=[];threatDetails=[];canRetry=false;
+        tactics=[];arrows=[];
         lichessData=null;tbData=null;
         $('think').classList.remove('on');
-        applyDiff();updateEvalBar();updateLabels();renderBoard();updateMoves();updateCaptured();updateStatus();renderCoach();
+        applyDiff();updateEvalBar();updateLabels();renderBoard();renderArrows();updateMoves();updateCaptured();updateStatus();renderCoach();
         fetchLichessData();
         if(playerColor==='b')setTimeout(reqComputer,200);
     }
@@ -1039,21 +1381,28 @@
     function reqHint(){
         if(!sfReady||thinking||game.game_over()||game.turn()!==playerColor)return;
         isHintCalc=true;
-        engineGo(15,function(best){
+        engineGoMultiPV(15,3,function(results,bestmove){
             isHintCalc=false;
-            if(!best||best==='(none)')return;
-            var from=best.substring(0,2),to=best.substring(2,4),promo=best.length>4?best[4]:undefined;
-            hintMove={from:from,to:to};
-            // Generate hint explanation
-            var brd=game.board(),fc=s2c(from),piece=brd[fc.r][fc.c];
-            var tc=s2c(to),target=brd[tc.r][tc.c];
-            // Try making the move temporarily to get SAN
-            var san='';
-            try{var tmpG=new Chess(game.fen());var mv=tmpG.move({from:from,to:to,promotion:promo});if(mv)san=mv.san}catch(e){}
-            var why=getHintExplanation(piece,from,to,target,san,brd);
-            hintText={move:san||from+to,why:why};
-            renderBoard();renderCoach();
-            setTimeout(function(){hintMove=null;hintText=null;renderBoard();renderCoach()},6000);
+            if(!results||results.length===0)return;
+            results.sort(function(a,b){return a.pvIndex-b.pvIndex});
+            var brd=game.board();
+            var hintLines=results.map(function(r){
+                var moves=r.pv.trim().split(/\s+/),uci=moves[0];
+                if(!uci||uci.length<4)return null;
+                var from=uci.substring(0,2),to=uci.substring(2,4),promo=uci.length>4?uci[4]:undefined;
+                var san='';
+                try{var tmpG=new Chess(game.fen());var mv=tmpG.move({from:from,to:to,promotion:promo});if(mv)san=mv.san}catch(e){}
+                var fc=s2c(from),piece=brd[fc.r][fc.c];
+                var tc=s2c(to),target=brd[tc.r][tc.c];
+                var why=getHintExplanation(piece,from,to,target,san,brd);
+                var evTxt=r.isMate?(r.score>0?'+':'-')+'M'+Math.abs(r.score):((r.score>=0?'+':'')+(r.score/100).toFixed(1));
+                return{move:toSerbNotation(san)||from+to,eval:evTxt,why:why,from:from,to:to};
+            }).filter(function(l){return l!==null});
+            if(hintLines.length===0)return;
+            hintMove={from:hintLines[0].from,to:hintLines[0].to};
+            hintText={lines:hintLines,isMulti:true};
+            updateArrows();renderBoard();renderArrows();renderCoach();
+            setTimeout(function(){hintMove=null;hintText=null;updateArrows();renderBoard();renderArrows();renderCoach()},10000);
         });
     }
     function getHintExplanation(piece,from,to,target,san,brd){
