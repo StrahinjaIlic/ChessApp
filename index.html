@@ -703,7 +703,7 @@
         if(minors.length>0)notes.push({t:'Razvoj: '+dev.length+'/'+minors.length+' lakih figura.',c:dev.length>=minors.length?'good':(dev.length>=2?'neutral':'warn')});
         if(undev.length>0)notes.push({t:'Treba razviti: '+undev.map(function(p){return PN[p.type]+' '+p.sq}).join(', '),c:'warn'});
         if(castled)notes.push({t:'Rokada obavljena.',c:'good'});
-        else if(onStart)notes.push({t:'Rokuraj \u0161to pre!',c:'warn'});
+        else if(onStart)notes.push({t:'Rokiraj \u0161to pre!',c:'warn'});
         var oM=pieces[opp(pc)].filter(function(p){return p.type==='n'||p.type==='b'}),oD=oM.filter(function(p){return p.row!==(pc==='w'?0:7)});
         if(dev.length>oD.length+1)notes.push({t:'Prednost u razvoju \u2014 iskoristi tempo!',c:'good'});
         if(oD.length>dev.length+1)notes.push({t:'Protivnik je bolje razvijen!',c:'bad'});
@@ -817,7 +817,7 @@
         var plans=[];
         if(phase==='opening'){
             if(devA.undev&&devA.undev.length>0)plans.push('Razvij lake figure \u2014 konje na f3/c3, lovce na aktivne dijagonale');
-            if(!devA.castled)plans.push('Rokuraj da za\u0161titi\u0161 kralja');
+            if(!devA.castled)plans.push('Rokiraj da za\u0161titi\u0161 kralja');
             if(centerA.my<=centerA.op)plans.push('Kontroli\u0161i centar pe\u0161acima (e4/d4 ili e5/d5)');
             if(plans.length===0)plans.push('Pove\u017Ei topove i pripremi srednju igru');
         }else if(phase==='middlegame'){
@@ -908,7 +908,7 @@
             h+='<div class="coach-quote cq-'+moveFeedback.type+'"><span class="cq-label '+moveFeedback.type+'">'+escH(moveFeedback.label)+'</span>';
             h+='<span style="color:#888;font-size:.73rem">'+escH(moveFeedback.text)+'</span><br>'+escH(moveFeedback.detail)+'</div>';
         }else if(mc===0){
-            h+='<div class="coach-quote">Nova partija! Kontroli\u0161i centar, razvij lake figure, rokuraj.</div>';
+            h+='<div class="coach-quote">Nova partija! Kontroli\u0161i centar, razvij lake figure, rokiraj.</div>';
         }
 
         // Opening
