@@ -875,6 +875,8 @@
     // Tactical motif detection
     function detectTacticalMotifs(brd,pieces,pc){
         tactics=[];
+        if(game.game_over()||game.turn()!==pc)return; // Only detect when it's player's turn
+        if(game.in_check())return; // Skip when in check — must address check first
         var myMoves=game.moves({verbose:true});
         // --- FORKS (opponent's and player's) ---
         // Opponent forks: check if opponent can move a piece to attack 2+ of our pieces AND be safe there
@@ -1213,7 +1215,9 @@
         var pM=null;for(var i=hist.length-1;i>=0;i--)if(hist[i].color===playerColor){pM=hist[i];break}
         if(!pM){moveFeedback=null;return}
         var delta=(curEval-evalBeforePlayerMove)*(playerColor==='w'?1:-1);
-        var fb={type:'ok',label:'',text:'',detail:''};
+        var fb={type:'ok',label:'',text:'',detail:'',moveLabel:''};
+        // Show which move is being evaluated
+        fb.moveLabel=toSerbNotation(pM.san);
         if(delta>40){fb.type='great';fb.label='Odli\u010Dan potez!'}
         else if(delta>-10){fb.type='good';fb.label='Dobar potez.'}
         else if(delta>-40){fb.type='ok';fb.label='Solidan potez.'}
@@ -1225,24 +1229,27 @@
         var reasons=[],backR=playerColor==='w'?'1':'8',mc=hist.length,brd=game.board(),pieces=getAllPieces(brd);
         if(pM.flags.indexOf('k')>=0)reasons.push('Rokada \u2014 kralj je bezbedan, top aktiviran.');
         else if(pM.flags.indexOf('q')>=0)reasons.push('Duga rokada.');
-        if((pM.piece==='n'||pM.piece==='b')&&pM.from[1]===backR){var tR=8-parseInt(pM.to[1]),tC=FILES.indexOf(pM.to[0]);reasons.push(CENTER.some(function(sq){return sq.r===tR&&sq.c===tC})?'Razvoj na centralno polje!':'Razvoj lake figure.')}
-        if(pM.piece==='p'&&(pM.to==='e4'||pM.to==='d4'||pM.to==='e5'||pM.to==='d5'))reasons.push('Pe\u0161ak u centru \u2014 kontrola klju\u010Dnih polja.');
-        if(pM.piece==='r'&&fileOpen(brd,FILES.indexOf(pM.to[0])))reasons.push('Top na otvorenu liniju!');
-        if(pM.piece==='q'&&mc<=12)reasons.push('Rani izlazak dame \u2014 rizik od gubitka tempa.');
-        if(pM.piece==='p'&&mc<=14){var dA=analyzeDev(pieces,playerColor);if(dA.undev&&dA.undev.length>=2&&pM.to!=='e4'&&pM.to!=='d4'&&pM.to!=='e5'&&pM.to!=='d5')reasons.push('Pe\u0161a\u010Dki potez dok figure \u010Dekaju \u2014 razvoj pre napada!')}
-        if(pM.piece==='n'){var nc=FILES.indexOf(pM.to[0]);if(nc===0||nc===7)reasons.push('Konj na ivici \u2014 kontroli\u0161e upola manje polja.')}
+        // Capture reasons — check BEFORE development/center to avoid misleading "pešak u centru" for captures
         if(pM.captured){var myV=PVAL[pM.piece],cV=PVAL[pM.captured];
-            // Check if this is a recapture
             var pIdx=-1;for(var ri=0;ri<hist.length;ri++)if(hist[ri]===pM){pIdx=ri;break}
             var isRecap=pIdx>0&&hist[pIdx-1].to===pM.to&&hist[pIdx-1].captured;
             if(isRecap)reasons.push('Uzimanje nazad na '+pM.to+'.');
             else if(cV>myV+1)reasons.push('Osvojena vrednija figura ('+PN[pM.captured]+')!');
             else if(cV<myV-1&&delta<-20)reasons.push('Gubitak materijala: '+PN[pM.piece]+' ('+myV+') za '+PN[pM.captured]+' ('+cV+').');
-            else if(cV===myV)reasons.push('Razmena figura na '+pM.to+'.');
+            else if(Math.abs(cV-myV)<=1)reasons.push('Razmena: '+PN[pM.piece]+' uzima '+PN[pM.captured]+' na '+pM.to+'.');
+            else reasons.push('Uzimanje '+PN[pM.captured]+' na '+pM.to+'.');
         }
+        // Development (only if not a capture)
+        if(!pM.captured&&(pM.piece==='n'||pM.piece==='b')&&pM.from[1]===backR){var tR=8-parseInt(pM.to[1]),tC=FILES.indexOf(pM.to[0]);reasons.push(CENTER.some(function(sq){return sq.r===tR&&sq.c===tC})?'Razvoj na centralno polje!':'Razvoj lake figure.')}
+        // Center pawn (only if not a capture)
+        if(!pM.captured&&pM.piece==='p'&&(pM.to==='e4'||pM.to==='d4'||pM.to==='e5'||pM.to==='d5'))reasons.push('Pe\u0161ak u centru \u2014 kontrola klju\u010Dnih polja.');
+        if(pM.piece==='r'&&fileOpen(brd,FILES.indexOf(pM.to[0])))reasons.push('Top na otvorenu liniju!');
+        if(pM.piece==='q'&&mc<=12)reasons.push('Rani izlazak dame \u2014 rizik od gubitka tempa.');
+        if(!pM.captured&&pM.piece==='p'&&mc<=14){var dA=analyzeDev(pieces,playerColor);if(dA.undev&&dA.undev.length>=2&&pM.to!=='e4'&&pM.to!=='d4'&&pM.to!=='e5'&&pM.to!=='d5')reasons.push('Pe\u0161a\u010Dki potez dok figure \u010Dekaju \u2014 razvoj pre napada!')}
+        if(pM.piece==='n'){var nc=FILES.indexOf(pM.to[0]);if(nc===0||nc===7)reasons.push('Konj na ivici \u2014 kontroli\u0161e upola manje polja.')}
         if(pM.flags.indexOf('e')>=0)reasons.push('En passant!');
-        if(reasons.length===0&&delta<-40)reasons.push('Pozicija se pogor\u0161ala. Da li je neka figura neubranjena? Da li protivnik preti ne\u0161to?');
-        if(reasons.length===0&&delta>20)reasons.push(PN[pM.piece]+' na '+pM.to+' \u2014 pobolj\u0161ava poziciju.');
+        if(reasons.length===0&&delta<-40)reasons.push('Pozicija se pogor\u0161ala.');
+        if(reasons.length===0&&delta>20)reasons.push(PN[pM.piece]+' na '+pM.to+' pobolj\u0161ava poziciju.');
         if(reasons.length===0)reasons.push(PN[pM.piece]+' na '+pM.to+'.');
         fb.detail=reasons.join(' ');moveFeedback=fb;
     }
@@ -1323,8 +1330,8 @@
 
         // Move feedback
         if(moveFeedback&&mc>0&&!canRetry){
-            h+='<div class="coach-quote cq-'+moveFeedback.type+'"><span class="cq-label '+moveFeedback.type+'">'+escH(moveFeedback.label)+'</span>';
-            h+='<span style="color:#888;font-size:.73rem">'+escH(moveFeedback.text)+'</span><br>'+escH(moveFeedback.detail)+'</div>';
+            h+='<div class="coach-quote cq-'+moveFeedback.type+'"><span class="cq-label '+moveFeedback.type+'">'+(moveFeedback.moveLabel?escH(moveFeedback.moveLabel)+': ':'')+escH(moveFeedback.label)+'</span>';
+            h+='<span style="color:#888;font-size:.73rem"> '+escH(moveFeedback.text)+'</span><br>'+escH(moveFeedback.detail)+'</div>';
         }else if(mc===0){
             h+='<div class="coach-quote">Nova partija! Kontroli\u0161i centar, razvij lake figure, rokiraj.</div>';
         }
