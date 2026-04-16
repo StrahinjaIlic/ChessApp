@@ -555,8 +555,17 @@
                 var t=tmap[sq],pv=PVAL[t.piece]||0;if(pv===0)continue;
                 var minAV=999,minAttacker=null;
                 t.attackers.forEach(function(a){if(PVAL[a.piece]<minAV){minAV=PVAL[a.piece];minAttacker=a}});
-                var canRecap=myMoves.some(function(m2){return m2.to===sq&&m2.from!==sq});
+                // Simulate capture and check if we can recapture
+                var canRecap=false;
+                try{
+                    var simParts=fen.split(' ');simParts[1]=opp(playerColor);simParts[3]='-';
+                    var simG=new Chess(simParts.join(' '));
+                    var capM=simG.moves({verbose:true}).filter(function(m2){return m2.from===minAttacker.from&&m2.to===sq});
+                    if(capM.length>0){simG.move(capM[0]);canRecap=simG.moves({verbose:true}).some(function(m2){return m2.to===sq})}
+                }catch(e2){}
                 var canEvade=myMoves.some(function(m2){return m2.from===sq});
+                // Skip if attacker is worth more than target and piece can evade or is defended
+                if(minAV>pv&&(canEvade||canRecap))continue;
                 // Build detailed threat info
                 var ti={sq:sq,piece:t.piece,pieceVal:pv,attackers:t.attackers,minAV:minAV,minAttacker:minAttacker,canRecap:canRecap,canEvade:canEvade};
                 // What is attacking it?
