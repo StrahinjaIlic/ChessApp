@@ -1057,14 +1057,8 @@
     }
 
     // AI Explain
-    function getAIKey(){
-        var k=localStorage.getItem('groq_key');
-        if(!k){k=prompt('Unesi Groq API key (od console.groq.com).\nKey po\u010Dinje sa gsk_');if(k){localStorage.setItem('groq_key',k.trim())}};
-        return k?k.trim():null;
-    }
     function reqExplain(){
         if(aiLoading)return;
-        var key=getAIKey();if(!key)return;
         var hist=game.history();if(hist.length===0){aiExplanation='Odigraj bar jedan potez pa klikni Objasni.';renderCoach();return}
         var moveStr='';
         for(var i=0;i<hist.length;i+=2){
@@ -1092,13 +1086,13 @@
         $('btn-explain').classList.add('loading');$('btn-explain').textContent='Analiziram...';
         renderCoach();
 
-        fetch('https://api.groq.com/openai/v1/chat/completions',{
+        fetch('/api/explain',{
             method:'POST',
-            headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
-            body:JSON.stringify({model:'llama-3.3-70b-versatile',messages:[{role:'user',content:prompt}],temperature:0.3,max_tokens:800})
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({prompt:prompt})
         })
         .then(function(r){
-            if(!r.ok){if(r.status===401){localStorage.removeItem('groq_key');throw new Error('Neispravan API key. Klikni Objasni ponovo.')}if(r.status===429)throw new Error('Previ\u0161e zahteva \u2014 sa\u010Dekaj 30 sekundi.');throw new Error('API gre\u0161ka ('+r.status+')');}
+            if(!r.ok){return r.json().then(function(err){throw new Error(err.error||'API gre\u0161ka ('+r.status+')');})}
             return r.json();
         })
         .then(function(data){
