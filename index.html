@@ -1118,10 +1118,14 @@
         var urgentInstr='';
         if(hasUrgentThreat){
             urgentInstr='NAJVAZNIJI PRIORITET: Tvoja figura visoke vrednosti je NAPADNUTA! Ovo je HITAN takticki problem koji ima prednost nad svim strateskim razmatranjima. '+
-                'Tvoji predlozi poteza MORAJU PRVO da rese ovu pretnju. Za svako polje bekstva objasni da li je bezbedno i zasto je stratesko dobro ili lose (kontrola centra, razvoj, bezbednost, aktivnost figure). '+
-                'Preporuci NAJBOLJE polje za bekstvo sa jasnim obrazlozenjem. Potezi koji ignorisu pretnju su NEDOPUSTIVI.\n\n';
+                'Tvoji predlozi poteza MORAJU PRVO da adresiraju ovu pretnju. Razmotri SVE opcije:\n'+
+                '  a) BEKSTVO: Za svako moguce polje objasni da li je bezbedno i strateske prednosti/mane (kontrola centra, razvoj, koordinacija, bezbednost kralja).\n'+
+                '  b) ZRTVA: Ako pozicija to dozvoljava, razmotri da li je ZRTVA figure takticki opravdana! Npr. zrtva dame koja vodi ka matu, dobijanju vise materijala nazad, odlucujucem napadu ili neodbranjivoj poziciji. Ovo je napredan koncept koji ucenik mora da nauci — objasni zasto zrtva funkcionise (konkretne varijante).\n'+
+                '  c) MEDJUPOTEZ: Da li postoji medjupotez (sah, pretnja matom, napad na protivnicku figuru) koji je jaci od prostog bekstva?\n'+
+                '  d) BLOKADA/ODBRANA: Da li druga figura moze da stane izmedju ili da brani napadnutu figuru?\n'+
+                'JASNO preporuci najbolji potez sa obrazlozenjem. Ako je zrtva bolja od bekstva, RECI TO OTVORENO.\n\n';
         }else if(threatDetails.length>0){
-            urgentInstr='VAZNO: Postoje aktivne pretnje na tabli! Tvoji predlozi poteza moraju da uzmu u obzir ove pretnje. Ne predlazi poteze koji ignorisu napadnute figure.\n\n';
+            urgentInstr='VAZNO: Postoje aktivne pretnje na tabli! Tvoji predlozi poteza moraju da uzmu u obzir ove pretnje. Razmotri i da li je zrtva napadnute figure takticki opravdana (vodi ka matu, dobijanju materijala, odlucujucem napadu). Ne predlazi poteze koji ignorisu napadnute figure bez dobrog razloga.\n\n';
         }
         var prompt='Ti si iskusan \u0161ahovski trener. Tvoj u\u010Denik ima rating 1500 i \u017Eeli da dostigne 2000.\n\n'+
             'Pozicija (FEN): '+game.fen()+'\n'+
@@ -1134,7 +1138,7 @@
             'Objasni poziciju na srpskom jeziku. Budi konkretan:\n'+
             (hasUrgentThreat?
                 '1. HITNO: Koja figura je napadnuta i zasto je to kriticno?\n'+
-                '2. Koji je NAJBOLJI potez za resavanje pretnje? Analiziraj svako moguce polje za bekstvo — za svako reci da li je bezbedno (da li ce figura biti ponovo napadnuta) i koje strateske prednosti/mane ima (kontrola centra, razvoj ostalih figura, koordinacija, bezbednost kralja). JASNO preporuci jedan najbolji potez.\n'+
+                '2. Koji je NAJBOLJI potez? Analiziraj SVE opcije — bekstvo (svako polje: bezbednost, strategija), zrtvu (da li vodi ka matu/dobijanju materijala/odlucujucem napadu — pokazi konkretne varijante!), medjupoteze (sah, kontrapretnja), odbranu drugom figurom. JASNO preporuci najbolji potez.\n'+
                 '3. Koji su ostali potezi-kandidati (drugi i treci najbolji) i zasto su losiji od najboljeg?\n'+
                 '4. Koji je plan za narednih 3-5 poteza nakon resavanja pretnje?\n\n'
             :
