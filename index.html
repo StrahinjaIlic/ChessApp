@@ -970,13 +970,21 @@
                     if(!first||!second)return;
                     if(first.color!==target||second.color!==target)return;
                     var slV=PVAL[sl.type]||0;
-                    // PIN: first piece less valuable, second more valuable (or king)
-                    if(first.val<=second.val||second.type==='k'){
-                        if(second.type==='k'||second.val>first.val){
-                            if(color===opp(pc)){
-                                tactics.push({t:'Tvoj '+PN[first.type]+' na '+first.sq+' je vezan! '+PN[sl.type]+' sa '+sl.sq+' ga dr\u017Ei jer iza stoji '+PN[second.type]+' '+second.sq+'.',c:'opp',from:sl.sq,targets:[first.sq,second.sq]});
-                            }else{
-                                tactics.push({t:PN[sl.type]+' '+sl.sq+' ve\u017Ee protivni\u010Dkog '+PN[first.type]+' '+first.sq+' \u2014 iza njega je '+PN[second.type]+'!',c:'my',from:sl.sq,to:first.sq});
+                    // PIN: first piece less valuable or equal, second more valuable (or king)
+                    if((first.val<=second.val||second.type==='k')&&(second.type==='k'||second.val>first.val)){
+                        if(color===opp(pc)){
+                            // Opponent pins our piece — always warn (even pawn pins to king matter)
+                            tactics.push({t:'Tvoj '+PN[first.type]+' na '+first.sq+' je vezan! '+PN[sl.type]+' sa '+sl.sq+' ga dr\u017Ei jer iza stoji '+PN[second.type]+' '+second.sq+'.',c:'opp',from:sl.sq,targets:[first.sq,second.sq]});
+                        }else{
+                            // Our pin on opponent — only show if PROFITABLE to exploit
+                            // Skip pawns pinned to minor pieces (capturing loses material: e.g. bishop takes pawn)
+                            // Only show if: pinned piece value >= our slider value (capturing is profitable)
+                            // OR pinned piece is pinned to king (absolute pin) AND pinned piece is valuable (not pawn)
+                            var isProfitable=first.val>=slV; // capturing pinned piece doesn't lose material
+                            var isAbsolutePin=second.type==='k';
+                            var pinnedIsValuable=first.val>=3; // at least a minor piece
+                            if(isProfitable||(isAbsolutePin&&pinnedIsValuable)){
+                                tactics.push({t:PN[sl.type]+' '+sl.sq+' ve\u017Ee protivni\u010Dkog '+PN[first.type]+' '+first.sq+' \u2014 iza njega je '+PN[second.type]+'!'+(isProfitable?' Mo\u017Ee\u0161 ga uzeti!':''),c:'my',from:sl.sq,to:first.sq});
                             }
                         }
                     }
@@ -985,7 +993,10 @@
                         if(color===opp(pc)){
                             tactics.push({t:PN[sl.type]+' sa '+sl.sq+' preti ra\u017Enjem! '+PN[first.type]+' '+first.sq+' mora be\u017Eati, pada '+PN[second.type]+' '+second.sq+'.',c:'opp',from:sl.sq,targets:[first.sq,second.sq]});
                         }else{
-                            tactics.push({t:PN[sl.type]+' '+sl.sq+' pravi ra\u017Eanj: '+PN[first.type]+' '+first.sq+' \u2192 '+PN[second.type]+' '+second.sq,c:'my',from:sl.sq,to:first.sq});
+                            // Our skewer — only show if profitable (we gain material)
+                            if(first.val>slV||second.val>=slV){
+                                tactics.push({t:PN[sl.type]+' '+sl.sq+' pravi ra\u017Eanj: '+PN[first.type]+' '+first.sq+' \u2192 '+PN[second.type]+' '+second.sq,c:'my',from:sl.sq,to:first.sq});
+                            }
                         }
                     }
                 });
