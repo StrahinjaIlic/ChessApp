@@ -1097,6 +1097,10 @@
         }
         var evTxt=Math.abs(curEval)>=9000?(curEval>0?'+':'-')+'M':((curEval>=0?'+':'')+((curEval)/100).toFixed(1));
         var opening=getOpeningName()||'';
+        // Get Stockfish best line for AI context
+        var sfBestLine=pvToSAN(currentPV,6);
+        // Get difficulty level text
+        var ds=$('sel-diff'),diffText=ds.options[ds.selectedIndex].text;
         // Build threat context for AI
         var threatCtx='';
         var hasUrgentThreat=false;
@@ -1127,23 +1131,28 @@
         }else if(threatDetails.length>0){
             urgentInstr='VAZNO: Postoje aktivne pretnje na tabli! Tvoji predlozi poteza moraju da uzmu u obzir ove pretnje. Razmotri i da li je zrtva napadnute figure takticki opravdana (vodi ka matu, dobijanju materijala, odlucujucem napadu). Ne predlazi poteze koji ignorisu napadnute figure bez dobrog razloga.\n\n';
         }
-        var prompt='Ti si iskusan \u0161ahovski trener. Tvoj u\u010Denik ima rating 1500 i \u017Eeli da dostigne 2000.\n\n'+
+        var prompt='Ti si iskusan \u0161ahovski trener (nivo velemajstora). Tvoj u\u010Denik igra na nivou '+diffText+' i \u017Eeli da se unapredi.\n\n'+
             'Pozicija (FEN): '+game.fen()+'\n'+
             'Potezi: '+moveStr.trim()+'\n'+
             (opening?'Otvaranje: '+opening+'\n':'')+
             'U\u010Denik igra '+(playerColor==='w'?'belim':'crnim')+' figurama.\n'+
-            'Evaluacija: '+evTxt+'\n'+
+            'Evaluacija (Stockfish): '+evTxt+'\n'+
+            (sfBestLine?'Stockfish najbolja linija: '+sfBestLine+'\n':'')+
             threatCtx+
+            'KRITICNO PRAVILO: Stockfish analiza (evaluacija i najbolja linija) je TACAN proracun — koristi je kao osnovu za svoje preporuke! '+
+            'Tvoj prvi predlog poteza MORA biti Stockfish-ov najbolji potez. Ne izmisljaj svoje poteze ako se ne poklapaju sa engine analizom. '+
+            'Tvoja uloga je da OBJASNIS zasto je engine-ov potez najbolji — strategija, taktika, planovi. '+
+            'Ako predlazes alternativne poteze (drugi i treci kandidat), oni moraju biti realno jaki potezi u poziciji, ne genericni saveti.\n\n'+
             urgentInstr+
             'Objasni poziciju na srpskom jeziku. Budi konkretan:\n'+
             (hasUrgentThreat?
                 '1. HITNO: Koja figura je napadnuta i zasto je to kriticno?\n'+
-                '2. Koji je NAJBOLJI potez? Analiziraj SVE opcije — bekstvo (svako polje: bezbednost, strategija), zrtvu (da li vodi ka matu/dobijanju materijala/odlucujucem napadu — pokazi konkretne varijante!), medjupoteze (sah, kontrapretnja), odbranu drugom figurom. JASNO preporuci najbolji potez.\n'+
+                '2. Koji je NAJBOLJI potez? Analiziraj SVE opcije — bekstvo (svako polje: bezbednost, strategija), zrtvu (da li vodi ka matu/dobijanju materijala/odlucujucem napadu — pokazi konkretne varijante!), medjupoteze (sah, kontrapretnja), odbranu drugom figurom. Stockfish-ova linija ti govori koji je objektivno najbolji — objasni ZASTO.\n'+
                 '3. Koji su ostali potezi-kandidati (drugi i treci najbolji) i zasto su losiji od najboljeg?\n'+
                 '4. Koji je plan za narednih 3-5 poteza nakon resavanja pretnje?\n\n'
             :
                 '1. Kakva je pozicija i \u0161ta je klju\u010Dno za obe strane?\n'+
-                '2. Koji su najbolji potezi-kandidati i ZA\u0160TO? (objasni strategiju iza svakog)\n'+
+                '2. Koji su najbolji potezi-kandidati? PRVI potez mora biti iz Stockfish linije. Objasni ZA\u0160TO je taj potez najbolji (strategija, taktika, plan). Drugi i treci kandidat moraju biti realno dobri potezi.\n'+
                 '3. Na \u0161ta u\u010Denik treba da pazi? (pretnje, zamke, taktika)\n'+
                 '4. Koji je plan za narednih 3-5 poteza?\n\n'
             )+
