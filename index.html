@@ -1487,6 +1487,18 @@
     function reqExplain(){
         if(aiLoading)return;
         var hist=game.history();if(hist.length===0){aiExplanation='Odigraj bar jedan potez pa klikni Objasni.';renderCoach();return}
+        // ALWAYS run fresh Stockfish MultiPV analysis first, then build AI prompt
+        aiLoading=true;aiExplanation=null;
+        $('btn-explain').classList.add('loading');$('btn-explain').textContent='Analiziram...';
+        renderCoach();
+        isHintCalc=true;
+        engineGoMultiPV(18,3,function(results){
+            isHintCalc=false;
+            _buildAndSendExplainPrompt(results);
+        });
+    }
+    function _buildAndSendExplainPrompt(sfResults){
+        var hist=game.history();
         var moveStr='';
         for(var i=0;i<hist.length;i+=2){
             moveStr+=(Math.floor(i/2)+1)+'.'+hist[i];
@@ -1495,8 +1507,21 @@
         }
         var evTxt=Math.abs(curEval)>=9000?(curEval>0?'+':'-')+'M':((curEval>=0?'+':'')+((curEval)/100).toFixed(1));
         var opening=getOpeningName()||'';
-        // Get Stockfish best line for AI context
-        var sfBestLine=pvToSAN(currentPV,6);
+        // Build Stockfish top moves from MultiPV results
+        var sfTopMoves='';
+        if(sfResults&&sfResults.length>0){
+            sfResults.sort(function(a,b){return a.pvIndex-b.pvIndex});
+            sfTopMoves='\nStockfish TOP potezi (TACNI, PROVERENI):\n';
+            sfResults.forEach(function(r,idx){
+                var pvSAN=pvToSAN(r.pv,6);
+                var evR=r.isMate?(r.score>0?'+':'-')+'M'+Math.abs(r.score):((r.score>=0?'+':'')+(r.score/100).toFixed(1));
+                if(pvSAN){
+                    var firstMove=pvSAN.split(/\s+/).slice(0,2).join(' ');
+                    sfTopMoves+=(idx+1)+'. '+firstMove+' (eval: '+evR+') — linija: '+pvSAN+'\n';
+                }
+            });
+            sfTopMoves+='\n';
+        }
         // Get difficulty level text
         var ds=$('sel-diff'),diffText=ds.options[ds.selectedIndex].text;
         // Build threat context for AI
@@ -1535,12 +1560,13 @@
             (opening?'Otvaranje: '+opening+'\n':'')+
             'U\u010Denik igra '+(playerColor==='w'?'belim':'crnim')+' figurama.\n'+
             'Evaluacija (Stockfish): '+evTxt+'\n'+
-            (sfBestLine?'Stockfish najbolja linija: '+sfBestLine+'\n':'')+
+            sfTopMoves+
             threatCtx+
-            'KRITICNO PRAVILO: Stockfish analiza (evaluacija i najbolja linija) je TACAN proracun — koristi je kao osnovu za svoje preporuke! '+
-            'Tvoj prvi predlog poteza MORA biti Stockfish-ov najbolji potez. Ne izmisljaj svoje poteze ako se ne poklapaju sa engine analizom. '+
-            'Tvoja uloga je da OBJASNIS zasto je engine-ov potez najbolji — strategija, taktika, planovi. '+
-            'Ako predlazes alternativne poteze (drugi i treci kandidat), oni moraju biti realno jaki potezi u poziciji, ne genericni saveti.\n\n'+
+            'APSOLUTNO PRAVILO: Gore su navedeni Stockfish TOP potezi — to su JEDINI potezi koje smes da preporucis! '+
+            'NE IZMISLJAJ POTEZE. Tvoja 3 preporuke moraju biti TACNO ova 3 Stockfish poteza iznad, istim redom. '+
+            'Tvoja uloga je SAMO da OBJASNIS zasto je svaki od tih poteza dobar — strategija, taktika, planovi, posledice. '+
+            'Ako Stockfish potez izgleda cudno, objasni ZASTO engine to preporucuje (dublja taktika, poziciona ideja). '+
+            'NIKADA ne predlazi poteze koji nisu u Stockfish listi iznad.\n\n'+
             urgentInstr+
             'Objasni poziciju na srpskom jeziku. Budi konkretan:\n'+
             (hasUrgentThreat?
@@ -1550,17 +1576,15 @@
                 '4. Koji je plan za narednih 3-5 poteza nakon resavanja pretnje?\n\n'
             :
                 '1. Kakva je pozicija i \u0161ta je klju\u010Dno za obe strane?\n'+
-                '2. Koji su najbolji potezi-kandidati? PRVI potez mora biti iz Stockfish linije. Objasni ZA\u0160TO je taj potez najbolji (strategija, taktika, plan). Drugi i treci kandidat moraju biti realno dobri potezi.\n'+
-                '3. Na \u0161ta u\u010Denik treba da pazi? (pretnje, zamke, taktika)\n'+
+                '2. Objasni SVA 3 Stockfish poteza iz liste iznad (SAMO te poteze, ne izmisljaj druge!). Za svaki objasni: strategiju, taktiku, plan, i posledice. Koji je NAJBOLJI i zasto?\n'+
+                '3. Na \u0161ta u\u010Denik treba da pazi? (protivnikove pretnje, zamke, taktika)\n'+
                 '4. Koji je plan za narednih 3-5 poteza?\n\n'
             )+
             'Koristi \u0161ahovski \u017Eargon ali objasni koncepte. Budi direktan i prakti\u010Dan. Do 300 re\u010Di.\n'+
             'VA\u017DNO: Pi\u0161i gramaticki ispravno na srpskom. Koristi "beli/crni" umesto "belogov/crnogov". Za strane koristi "beli" i "crni" kao prideve (npr. "crni kontranapad", "bela pozicija", "plan za belog", "crni preti").\n'+
             'NOTACIJA: Koristi ISKLJUCIVO srpsku sahovsku notaciju: K=Kralj, D=Dama, T=Top, L=Lovac, S=Skakac (konj). Pesak nema oznaku. Primeri: Sf3 (skakac na f3), Ld3 (lovac na d3), De2 (dama na e2). NIKADA ne koristi J, N, B, Q, R - to nije srpska notacija.';
 
-        aiLoading=true;aiExplanation=null;aiMessages=[{role:'user',content:prompt}];
-        $('btn-explain').classList.add('loading');$('btn-explain').textContent='Analiziram...';
-        renderCoach();
+        aiMessages=[{role:'user',content:prompt}];
 
         fetch('/api/explain',{
             method:'POST',
