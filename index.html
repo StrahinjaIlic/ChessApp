@@ -877,38 +877,69 @@
         tactics=[];
         var myMoves=game.moves({verbose:true});
         // --- FORKS (opponent's and player's) ---
-        // Opponent forks: check if opponent has a piece attacking 2+ of our valuable pieces
+        // Opponent forks: check if opponent can move a piece to attack 2+ of our pieces AND be safe there
         try{
             var fen=game.fen(),fp=fen.split(' ');fp[1]=opp(pc);fp[3]='-';
             var tg=new Chess(fp.join(' '));
             var opMoves=tg.moves({verbose:true});
-            // Group opponent attacks by source piece
-            var opAtk={};
-            opMoves.forEach(function(m){if(m.captured){if(!opAtk[m.from])opAtk[m.from]={piece:m.piece,targets:[]};opAtk[m.from].targets.push({sq:m.to,piece:m.captured,val:PVAL[m.captured]||0})}});
-            for(var sq in opAtk){
-                var a=opAtk[sq],vals=a.targets.filter(function(t){return t.val>=1});
-                if(vals.length>=2){
-                    var totalV=0;vals.forEach(function(t){totalV+=t.val});
-                    var attackerV=PVAL[a.piece]||0;
-                    if(totalV>attackerV+1){
-                        var tgts=vals.sort(function(x,y){return y.val-x.val}).slice(0,3).map(function(t){return PN[t.piece]+' '+t.sq});
-                        tactics.push({t:'Protivnikov '+PN[a.piece]+' sa '+sq+' preti vilju\u0161kom na: '+tgts.join(', ')+'!',c:'opp',from:sq,targets:vals.map(function(t){return t.sq})});
+            // For each opponent move, simulate it and check if the piece attacks 2+ of our pieces from the new square
+            var seenForks={};
+            opMoves.forEach(function(omv){
+                try{
+                    var tmpG2=new Chess(game.fen());
+                    // Make opponent's move by flipping turn
+                    var ff=game.fen().split(' ');ff[1]=opp(pc);ff[3]='-';
+                    var tg3=new Chess(ff.join(' '));
+                    tg3.move(omv);
+                    // Check if our side can recapture the piece
+                    var ourReply=tg3.moves({verbose:true});
+                    var recaps2=ourReply.filter(function(m2){return m2.to===omv.to});
+                    var atkV=PVAL[omv.piece]||0;
+                    var canRecapCheap=recaps2.some(function(rc){return(PVAL[rc.piece]||0)<=atkV});
+                    if(canRecapCheap)return; // We can take the forking piece cheaply — not a real fork
+                    // Check what the moved piece attacks from new square
+                    var ff2=tg3.fen().split(' ');ff2[1]=opp(pc);ff2[3]='-';
+                    var tg4=new Chess(ff2.join(' '));
+                    var atkMoves=tg4.moves({verbose:true}).filter(function(m2){return m2.from===omv.to&&m2.captured&&(PVAL[m2.captured]||0)>=1});
+                    if(atkMoves.length>=2){
+                        var totalV3=0;atkMoves.forEach(function(am){totalV3+=PVAL[am.captured]||0});
+                        if(totalV3>atkV+1){
+                            var key=omv.piece+omv.to;
+                            if(seenForks[key])return;seenForks[key]=true;
+                            var tgts3=atkMoves.sort(function(x,y){return(PVAL[y.captured]||0)-(PVAL[x.captured]||0)}).slice(0,3).map(function(t){return PN[t.captured]+' '+t.to});
+                            tactics.push({t:'Protivnik preti: '+PN[omv.piece]+' na '+omv.to+' \u2014 vilju\u0161ka na '+tgts3.join(', ')+'!',c:'opp',from:omv.from,targets:[omv.to]});
+                        }
                     }
-                }
-            }
+                }catch(e2){}
+            });
         }catch(e){}
         // Player fork opportunities: simulate each move, check if new position attacks 2+ opponent pieces
         myMoves.forEach(function(mv){
             try{
                 var tmpG=new Chess(game.fen());tmpG.move(mv);
-                var fen2=tmpG.fen(),fp2=fen2.split(' ');fp2[1]=pc;fp2[3]='-';
+                // Check if the moved piece is SAFE on the new square (opponent can't capture it profitably)
+                var fen2=tmpG.fen();
+                var opFen=fen2.split(' ');// It's now opponent's turn after our move
+                var opReply=tmpG.moves({verbose:true});
+                var recaps=opReply.filter(function(m2){return m2.to===mv.to});
+                var movedV=PVAL[mv.piece]||0;
+                var isSafe=true;
+                if(recaps.length>0){
+                    // Piece can be captured — check if cheapest attacker makes it unprofitable
+                    var cheapest=999;
+                    recaps.forEach(function(rc){var av=PVAL[rc.piece]||0;if(av<cheapest)cheapest=av});
+                    // If opponent can capture with a piece worth <= our piece, forking piece is not safe
+                    if(cheapest<=movedV)isSafe=false;
+                }
+                if(!isSafe)return; // Skip — forking piece would be captured
+                // Now check what we attack from the new square
+                var fp2=fen2.split(' ');fp2[1]=pc;fp2[3]='-';
                 var tg2=new Chess(fp2.join(' '));
                 var afterMoves=tg2.moves({verbose:true}).filter(function(m2){return m2.from===mv.to&&m2.captured});
                 if(afterMoves.length>=2){
                     var vals2=afterMoves.filter(function(m2){return(PVAL[m2.captured]||0)>=1});
                     if(vals2.length>=2){
                         var totalV2=0;vals2.forEach(function(t){totalV2+=t.val||PVAL[t.captured]||0});
-                        var movedV=PVAL[mv.piece]||0;
                         if(totalV2>movedV+1){
                             var tgts2=vals2.sort(function(x,y){return(PVAL[y.captured]||0)-(PVAL[x.captured]||0)}).slice(0,3).map(function(t){return PN[t.captured]+' '+t.to});
                             tactics.push({t:toSerbNotation(mv.san)+' \u2014 vilju\u0161ka! Napada: '+tgts2.join(', '),c:'my',from:mv.from,to:mv.to});
