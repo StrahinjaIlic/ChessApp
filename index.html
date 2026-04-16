@@ -1097,7 +1097,7 @@
             body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})
         })
         .then(function(r){
-            if(!r.ok){if(r.status===401||r.status===403){localStorage.removeItem('gemini_key');throw new Error('Neispravan API key. Klikni ponovo da unese\u0161 novi.')}throw new Error('Gre\u0161ka: '+r.status)}
+            if(!r.ok){if(r.status===401||r.status===403){localStorage.removeItem('gemini_key');throw new Error('Neispravan API key. Klikni Objasni ponovo da unese\u0161 novi.')}if(r.status===429)throw new Error('Previ\u0161e zahteva \u2014 sa\u010Dekaj 30 sekundi i probaj ponovo.');throw new Error('API gre\u0161ka ('+r.status+'). Probaj ponovo.')}
             return r.json();
         })
         .then(function(data){
