@@ -1057,14 +1057,14 @@
     }
 
     // AI Explain
-    function getGeminiKey(){
-        var k=localStorage.getItem('gemini_key');
-        if(!k){k=prompt('Unesi Gemini API key (od aistudio.google.com):');if(k){localStorage.setItem('gemini_key',k.trim())}};
+    function getAIKey(){
+        var k=localStorage.getItem('groq_key');
+        if(!k){k=prompt('Unesi Groq API key (od console.groq.com).\nKey po\u010Dinje sa gsk_');if(k){localStorage.setItem('groq_key',k.trim())}};
         return k?k.trim():null;
     }
     function reqExplain(){
         if(aiLoading)return;
-        var key=getGeminiKey();if(!key)return;
+        var key=getAIKey();if(!key)return;
         var hist=game.history();if(hist.length===0){aiExplanation='Odigraj bar jedan potez pa klikni Objasni.';renderCoach();return}
         var moveStr='';
         for(var i=0;i<hist.length;i+=2){
@@ -1091,18 +1091,18 @@
         $('btn-explain').classList.add('loading');$('btn-explain').textContent='Analiziram...';
         renderCoach();
 
-        fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key='+key,{
+        fetch('https://api.groq.com/openai/v1/chat/completions',{
             method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})
+            headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
+            body:JSON.stringify({model:'llama-3.3-70b-versatile',messages:[{role:'user',content:prompt}],temperature:0.3,max_tokens:800})
         })
         .then(function(r){
-            if(!r.ok){if(r.status===401||r.status===403){localStorage.removeItem('gemini_key');throw new Error('Neispravan API key. Klikni Objasni ponovo da unese\u0161 novi.')}if(r.status===429)throw new Error('Previ\u0161e zahteva \u2014 sa\u010Dekaj 30 sekundi i probaj ponovo.');throw new Error('API gre\u0161ka ('+r.status+'). Probaj ponovo.')}
+            if(!r.ok){if(r.status===401){localStorage.removeItem('groq_key');throw new Error('Neispravan API key. Klikni Objasni ponovo.')}if(r.status===429)throw new Error('Previ\u0161e zahteva \u2014 sa\u010Dekaj 30 sekundi.');throw new Error('API gre\u0161ka ('+r.status+')');}
             return r.json();
         })
         .then(function(data){
             var text='';
-            try{text=data.candidates[0].content.parts[0].text}catch(e){text='Nema odgovora od AI.'}
+            try{text=data.choices[0].message.content}catch(e){text='Nema odgovora od AI.'}
             aiExplanation=text;
         })
         .catch(function(e){aiExplanation='Gre\u0161ka: '+e.message})
