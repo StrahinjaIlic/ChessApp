@@ -1438,15 +1438,18 @@
         fetchLichessData();
         if(playerColor==='b')setTimeout(reqComputer,200);
     }
+    function cancelAnalysis(){isHintCalc=false;isMultiPV=false;pendingBest=null}
     function undoMove(){
         if(thinking||game.history().length===0)return;
+        cancelAnalysis(); // Stop any running background analysis
         game.undo();if(game.history().length>0&&game.turn()!==playerColor)game.undo();
         var h=game.history({verbose:true});
         lastMove=h.length>0?{from:h[h.length-1].from,to:h[h.length-1].to}:null;
-        selected=null;hintMove=null;canRetry=false;afterMove();
+        selected=null;hintMove=null;canRetry=false;moveFeedback=null;afterMove();
     }
     function reqHint(){
         if(!sfReady||thinking||game.game_over()||game.turn()!==playerColor)return;
+        cancelAnalysis(); // Stop any running background analysis
         isHintCalc=true;
         engineGoMultiPV(15,3,function(results,bestmove){
             isHintCalc=false;
@@ -1507,6 +1510,7 @@
     function reqExplain(){
         if(aiLoading)return;
         var hist=game.history();if(hist.length===0){aiExplanation='Odigraj bar jedan potez pa klikni Objasni.';renderCoach();return}
+        cancelAnalysis(); // Stop any running background analysis
         aiLoading=true;aiExplanation=null;
         $('btn-explain').classList.add('loading');$('btn-explain').textContent='Analiziram...';
         renderCoach();
