@@ -1193,10 +1193,18 @@
         threatDetails.forEach(function(td){
             if(td.attackers&&td.attackers.length>0)arrows.push({from:td.attackers[0].from,to:td.sq,color:'red'});
         });
-        // Yellow: tactic opportunities
-        tactics.filter(function(t){return t.c==='my'&&t.from&&t.to}).slice(0,2).forEach(function(t){
-            arrows.push({from:t.from,to:t.to,color:'yellow'});
-        });
+        // Yellow: tactic opportunities — cross-validate with Stockfish (same filter as "Tvoje mogu\u0107nosti").
+        // If SF hasn't responded yet, suppress yellow arrows to avoid flashing tactics SF will refute.
+        if(lastSfCandidates&&lastSfCandidates.length>0){
+            var sfTop={};
+            lastSfCandidates.forEach(function(c){
+                var u=(c.pv||'').trim().split(/\s+/)[0];
+                if(u)sfTop[u]=1;
+            });
+            tactics.filter(function(t){return t.c==='my'&&t.from&&t.to&&sfTop[t.from+t.to]}).slice(0,2).forEach(function(t){
+                arrows.push({from:t.from,to:t.to,color:'yellow'});
+            });
+        }
         // Blue: hint
         if(hintMove){
             arrows=arrows.filter(function(a){return!(a.from===hintMove.from&&a.to===hintMove.to)});
@@ -1357,9 +1365,31 @@
                 h+='</div>';
             }
             if(myTac.length>0){
-                h+='<div class="tactic-box"><div class="tactic-title">\u2694 Tvoje mogu\u0107nosti</div>';
-                myTac.slice(0,3).forEach(function(t){h+='<div class="tactic-item">'+escH(t.t)+'</div>'});
-                h+='</div>';
+                // Cross-validate with Stockfish: hide tactic moves Stockfish doesn't have in top 3.
+                // Filters out "forks" that look good locally but lose to a concrete refutation.
+                if(lastSfCandidates&&lastSfCandidates.length>0){
+                    var sfTopMoves={};
+                    lastSfCandidates.forEach(function(c){
+                        var uci=(c.pv||'').trim().split(/\s+/)[0];
+                        if(uci)sfTopMoves[uci]=c;
+                    });
+                    myTac=myTac.filter(function(t){
+                        if(!t.from||!t.to)return true;
+                        return !!sfTopMoves[t.from+t.to];
+                    }).map(function(t){
+                        var sf=sfTopMoves[(t.from||'')+(t.to||'')];
+                        if(sf)t._sfEval=sf.eval;
+                        return t;
+                    });
+                }
+                if(myTac.length>0){
+                    h+='<div class="tactic-box"><div class="tactic-title">\u2694 Tvoje mogu\u0107nosti</div>';
+                    myTac.slice(0,3).forEach(function(t){
+                        var tag=t._sfEval?' <span style="color:#7a9;font-size:.85em">('+escH(t._sfEval)+')</span>':'';
+                        h+='<div class="tactic-item">'+escH(t.t)+tag+'</div>';
+                    });
+                    h+='</div>';
+                }
             }
         }
 
@@ -1651,27 +1681,9 @@
         return facts.join('\n');
     }
     function _buildAndSendExplainPrompt(sfResults){
-        var hist=game.history();
-        var moveStr='';
-        for(var i=0;i<hist.length;i+=2){
-            moveStr+=(Math.floor(i/2)+1)+'.'+hist[i];
-            if(i+1<hist.length)moveStr+=' '+hist[i+1];
-            moveStr+=' ';
-        }
         var evTxt=Math.abs(curEval)>=9000?(curEval>0?'+':'-')+'M':((curEval>=0?'+':'')+((curEval)/100).toFixed(1));
-        var opening=getOpeningName()||'';
-        // Build Stockfish candidates display
-        var sfLines=_buildSfCandidatesText(sfResults);
-        lastSfCandidates=sfLines;
-        var sfBlock='';
-        if(sfLines.length>0){
-            sfBlock='\nStockfish top potezi:\n';
-            sfLines.forEach(function(l){
-                sfBlock+=l.rank+'. ('+l.eval+') '+l.line+(l.why?' [CINJENICA: '+l.why+']':'')+'\n';
-            });
-            sfBlock+='\n';
-        }
-        // Build factual position summary from computed analysis
+        // Keep SF candidates cached for follow-up chat, but do not send to explain prompt
+        lastSfCandidates=_buildSfCandidatesText(sfResults);
         var posFacts=_buildPositionFacts();
         // Build threat context
         var threatCtx='';
@@ -1682,28 +1694,16 @@
             });
             threatCtx+='\n';
         }
-        var prompt='Ucenik igra '+(playerColor==='w'?'belim':'crnim')+'.\n'+
-            'Potezi: '+moveStr.trim()+'\n'+
-            (opening?'Otvaranje: '+opening+'\n':'')+
-            'Eval: '+evTxt+'\n'+
-            sfBlock+
-            'CINJENICE O POZICIJI (tacne, proverene — koristi ih!):\n'+posFacts+'\n'+
-            (threatCtx?threatCtx:'')+'\n'+
-            'Igrac VIDI Stockfish poteze. Tvoj zadatak: objasni ZASTO je svaki od tih poteza dobar u ovoj poziciji.\n\n'+
-            'Za svaki Stockfish potez (2-3 recenice):\n'+
-            '- Sta KONKRETNO postize? (imenuj polja, figure, linije)\n'+
-            '- Koja je ideja/plan iza poteza?\n\n'+
-            'Zatim:\n'+
-            '- Protivnikove slabosti koje mozemo iskoristiti (KONKRETNA polja i figure)\n'+
-            '- Na sta paziti (protivnikove pretnje)\n\n'+
-            'PRAVILA:\n'+
-            '- Koristi CINJENICE O POZICIJI iznad — NE izmisljaj da neko treba da rokira ako vec jeste\n'+
-            '- Budi KONKRETAN — imenuj polja, figure, dijagonale\n'+
-            '- Svaki potez objasni u 2-3 recenice, ne vise\n'+
-            '- Do 250 reci ukupno\n'+
-            '- Srpski jezik. Notacija: K=Kralj, D=Dama, T=Top, L=Lovac, S=Skakac. Pesak nema oznaku. NIKADA ne koristi N, B, Q, R.';
+        var prompt='Igra '+(playerColor==='w'?'beli':'crni')+'. Eval: '+evTxt+'.\n'+
+            'CINJENICE:\n'+posFacts+'\n'+
+            (threatCtx?threatCtx:'')+
+            'Zadatak: strategijska procena pozicije (samo prednosti i mane, nista drugo).\n\n'+
+            'FORMAT:\n'+
+            'PREDNOSTI:\n- 2-3 konkretne stvari (polja, figure, linije) koje ti idu u korist\n\n'+
+            'MANE I PRETNJE:\n- 2-3 konkretne slabosti/pretnje (polja, figure, sta protivnik preti)\n\n'+
+            'PRAVILA: do 100 reci. Srpski. Notacija K/D/T/L/S (NIKAD N/B/Q/R). Koristi CINJENICE, ne izmisljaj. Bez uvoda i zakljucka.';
 
-        aiMessages=[{role:'system',content:'Ti si sahovski trener. Objasanjavas ZASTO su konkretni potezi dobri u konkretnoj poziciji. Budi precizan — imenuj polja, figure, dijagonale. Ne daj genericne savete.'},{role:'user',content:prompt}];
+        aiMessages=[{role:'system',content:'Sahovski trener. Kratko i konkretno — imenuj polja, figure, linije. Samo prednosti i mane pozicije.'},{role:'user',content:prompt}];
 
         fetch('/api/explain',{
             method:'POST',
