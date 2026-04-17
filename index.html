@@ -1492,7 +1492,7 @@
         $('btn-explain').classList.add('loading');$('btn-explain').textContent='Analiziram...';
         renderCoach();
         isHintCalc=true;
-        engineGoMultiPV(18,3,function(results){
+        engineGoMultiPV(15,3,function(results){
             isHintCalc=false;
             _buildAndSendExplainPrompt(results);
         });
