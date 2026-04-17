@@ -484,7 +484,7 @@
         });
     }
     function afterMove(){
-        currentPV='';pvDepth=0; // Reset stale PV from previous position
+        currentPV='';pvDepth=0;lastSfCandidates=null; // Reset stale data from previous position
         detectAllThreats();
         var brd=game.board(),pieces=getAllPieces(brd);
         detectTacticalMotifs(brd,pieces,playerColor);
