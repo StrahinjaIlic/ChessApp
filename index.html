@@ -484,7 +484,7 @@
         });
     }
     function afterMove(){
-        currentPV='';pvDepth=0;lastSfCandidates=null; // Reset stale data from previous position
+        currentPV='';pvDepth=0;lastSfCandidates=null;
         detectAllThreats();
         var brd=game.board(),pieces=getAllPieces(brd);
         detectTacticalMotifs(brd,pieces,playerColor);
@@ -492,6 +492,15 @@
         renderBoard();renderArrows();updateMoves();updateStatus();updateCaptured();
         renderCoach();
         fetchLichessData();fetchTablebaseData();
+        // Auto-analyze: always show Stockfish top moves when it's player's turn
+        if(game.turn()===playerColor&&!game.game_over()&&sfReady&&!thinking){
+            isHintCalc=true;
+            engineGoMultiPV(13,3,function(results){
+                isHintCalc=false;
+                lastSfCandidates=_buildSfCandidatesText(results);
+                updateArrows();renderArrows();renderCoach();
+            });
+        }
     }
     function doRetry(){
         if(game.history().length<2)return;
@@ -1548,27 +1557,28 @@
             });
             threatCtx+='\n';
         }
-        var prompt='Ti si sahovski trener. Ucenik igra '+(playerColor==='w'?'belim':'crnim')+'.\n\n'+
-            'FEN: '+game.fen()+'\n'+
+        var prompt='Ucenik igra '+(playerColor==='w'?'belim':'crnim')+'. FEN: '+game.fen()+'\n'+
             'Potezi: '+moveStr.trim()+'\n'+
             (opening?'Otvaranje: '+opening+'\n':'')+
             'Eval: '+evTxt+'\n'+
             sfBlock+
             threatCtx+
-            'TVOJ ZADATAK: Objasni STRATESKU I POZICIONU sliku ove pozicije. Budi precizan i konkretan.\n\n'+
+            'Igrac vec VIDI Stockfish top poteze sa linijama (prikazani su mu). Tvoj zadatak je da objasnis ZASTO je svaki od tih poteza dobar u OVOJ KONKRETNOJ poziciji.\n\n'+
+            'Za SVAKI od Stockfish poteza iznad objasni:\n'+
+            '- Sta KONKRETNO taj potez postize u ovoj poziciji? (ne genericno "razvoj" nego npr. "Sc3 kontrolise d5 i sprečava crnog da igra d5")\n'+
+            '- Koja je IDEJA iza tog poteza? (napad, kontrola kljucnog polja, priprema za rokadu, pritisak na slabost)\n'+
+            '- Sta protivnik najbolje odgovara i zasto je to OK za nas?\n\n'+
+            'Zatim ukratko:\n'+
+            '- Koje su KONKRETNE slabosti u protivnikovoj poziciji? (imenuj polja)\n'+
+            '- Na sta moras da pazis? (protivnikove pretnje)\n\n'+
             'PRAVILA:\n'+
-            '- NE preporucuj poteze. Stockfish potezi su vec prikazani igracu iznad (on ih vidi).\n'+
-            '- NE ponavljaj Stockfish linije. Igrac ih vec ima.\n'+
-            '- Fokusiraj se ISKLJUCIVO na razumevanje pozicije:\n\n'+
-            '1. POZICIJA: Koji tip pozicije je ovo? (otvorena/zatvorena, napadacka/defanzivna) Ko je bolji i ZASTO tacno?\n'+
-            '2. KLJUCNI FAKTORI: Sta konkretno odredjuje ko je bolji? (kontrola centra, razvoj, pesacka struktura, bezbednost kralja, aktivnost figura, slaba polja)\n'+
-            '3. PLANOVI: Sta beli ZELI da postigne u narednih 5 poteza? Sta crni ZELI? Koji plan je realističniji?\n'+
-            '4. SLABOSTI: Koje su konkretne slabosti u protivnikovoj poziciji? (slaba polja, losi pesaci, nerazvijene figure, izlozen kralj)\n'+
-            '5. OPASNOSTI: Sta protivnik preti? Na sta moras da pazis?\n\n'+
-            'Budi direktan, konkretan, precizan. Imenuj TACNA polja i figure. Do 200 reci.\n'+
-            'Pisi na srpskom. Notacija: K=Kralj, D=Dama, T=Top, L=Lovac, S=Skakac. Pesak nema oznaku. NIKADA ne koristi N, B, Q, R.';
+            '- Budi KONKRETAN — imenuj tacna polja, figure, dijagonale, linije\n'+
+            '- NE pricaj genericno o "kontroli centra" ili "razvoju" bez konteksta\n'+
+            '- Svaki potez objasni u 2-3 recenice, ne vise\n'+
+            '- Do 250 reci ukupno\n'+
+            '- Srpski jezik. Notacija: K=Kralj, D=Dama, T=Top, L=Lovac, S=Skakac. Pesak nema oznaku. NIKADA ne koristi N, B, Q, R.';
 
-        aiMessages=[{role:'system',content:'Ti si sahovski trener koji objasnjava pozicije. Fokus: strategija, pozicija, planovi. Ne preporucujes poteze — to radi engine. Ti objasanjavas ZASTO je pozicija takva kakva jeste.'},{role:'user',content:prompt}];
+        aiMessages=[{role:'system',content:'Ti si sahovski trener. Objasanjavas ZASTO su konkretni potezi dobri u konkretnoj poziciji. Budi precizan — imenuj polja, figure, dijagonale. Ne daj genericne savete.'},{role:'user',content:prompt}];
 
         fetch('/api/explain',{
             method:'POST',
