@@ -1042,6 +1042,18 @@
                     return nd!==d[0]||ndc!==d[1]; // moves off the ray
                 });
                 if(bMoves.length>0){
+                    // Check if the enemy target attacks BACK along the same ray to our slider
+                    // If so, moving the blocker EXPOSES our slider (it's a pin on US, not an opportunity!)
+                    var slV=PVAL[sl.type]||0;
+                    var targetIsSlider=target2.type==='b'||target2.type==='r'||target2.type==='q';
+                    var targetAttacksBack=false;
+                    if(targetIsSlider){
+                        var tDirs=DIRS[target2.type]||[];
+                        var revD=[-d[0],-d[1]]; // reverse direction
+                        targetAttacksBack=tDirs.some(function(td){return td[0]===revD[0]&&td[1]===revD[1]});
+                    }
+                    // If target attacks back and our slider is more valuable, it's a pin on us — skip
+                    if(targetAttacksBack&&slV>target2.val)return;
                     var isCheck=target2.type==='k';
                     tactics.push({t:'Pomeri '+PN[blocker.type]+' sa '+blocker.sq+' \u2014 otkriveni napad '+PN[sl.type]+' na '+PN[target2.type]+' '+target2.sq+(isCheck?' (otkriveni \u0161ah!)':'!')
                     ,c:'my',from:blocker.sq,to:bMoves[0].to});
