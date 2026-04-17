@@ -1294,7 +1294,9 @@
         if(lastSfCandidates&&lastSfCandidates.length>0){
             h+='<div class="pv-box" style="border:1px solid #2a5a2a;background:#1a2a1a"><div class="pv-title" style="color:#7cc35d">\u265E Stockfish Top Potezi</div>';
             lastSfCandidates.forEach(function(c){
-                h+='<div style="padding:3px 0;font-size:.78rem"><span style="color:#7cc35d;font-weight:700">'+c.rank+'.</span> <span style="color:#629924;font-weight:600">'+escH(c.eval)+'</span> <span style="color:#ccc">'+escH(c.line)+'</span></div>';
+                h+='<div style="padding:4px 0;border-bottom:1px solid #1a3a1a;font-size:.78rem"><span style="color:#7cc35d;font-weight:700">'+c.rank+'.</span> <span style="color:#629924;font-weight:600">'+escH(c.eval)+'</span> <span style="color:#ccc">'+escH(c.line)+'</span>';
+                if(c.why)h+='<div style="font-size:.72rem;color:#8ab88a;margin-top:2px;padding-left:14px">'+escH(c.why)+'</div>';
+                h+='</div>';
             });
             h+='</div>';
         }
@@ -1504,8 +1506,78 @@
         return reasons.join(' ');
     }
 
+    // Generate factual move explanation from board state (no AI, always correct)
+    function getMoveFactualExplanation(uciMove){
+        if(!uciMove||uciMove.length<4)return'';
+        var from=uciMove.substring(0,2),to=uciMove.substring(2,4),promo=uciMove.length>4?uciMove[4]:undefined;
+        var brd=game.board(),fc=s2c(from),piece=brd[fc.r][fc.c];
+        if(!piece)return'';
+        var tc=s2c(to),target=brd[tc.r][tc.c];
+        var san='';try{var tg=new Chess(game.fen());var mv=tg.move({from:from,to:to,promotion:promo});if(mv)san=mv.san}catch(e){}
+        var reasons=[],pn=PN[piece.type];
+        // Capture
+        if(target){
+            var pv=PVAL[piece.type]||0,tv=PVAL[target.type]||0;
+            if(tv>pv)reasons.push('Uzima vredniju figuru: '+PN[target.type]+' ('+tv+') za '+pn+' ('+pv+').');
+            else if(tv===pv)reasons.push('Razmena: '+pn+' uzima '+PN[target.type]+' na '+to+'.');
+            else reasons.push('Uzima '+PN[target.type]+' na '+to+'.');
+        }
+        // Castling
+        if(piece.type==='k'&&Math.abs(FILES.indexOf(from[0])-FILES.indexOf(to[0]))>1){
+            reasons.push(to[0]==='g'?'Kratka rokada':'Duga rokada');reasons.push('\u2014 za\u0161tita kralja i aktivacija topa.');return reasons.join(' ');
+        }
+        // Check
+        try{var tg2=new Chess(game.fen());tg2.move({from:from,to:to,promotion:promo});if(tg2.in_check())reasons.push('\u0160ah!')}catch(e){}
+        // Development from back rank
+        var backR=playerColor==='w'?7:0;
+        if((piece.type==='n'||piece.type==='b')&&fc.r===backR){
+            if(CENTER.some(function(sq){return sq.r===tc.r&&sq.c===tc.c}))reasons.push('Razvoj '+pn.toLowerCase()+'a na centralno polje.');
+            else reasons.push('Razvoj '+pn.toLowerCase()+'a.');
+            // Check what it prepares
+            if(piece.type==='b'){
+                // What diagonal does it control?
+                var diag=to[0]>from[0]?'kraljevsku':'daminsku';
+                reasons.push('Kontroli\u0161e '+diag+' dijagonalu.');
+            }
+        }
+        // Rook moves
+        if(piece.type==='r'){
+            if(fileOpen(brd,tc.c))reasons.push('Top na otvorenu '+FILES[tc.c]+'-liniju.');
+            else if(fileSemiOpen(brd,tc.c,playerColor))reasons.push('Top na poluotvorenu '+FILES[tc.c]+'-liniju.');
+        }
+        // Pawn moves
+        if(piece.type==='p'){
+            if(!target&&(to==='e4'||to==='d4'||to==='e5'||to==='d5'))reasons.push('Pe\u0161ak u centru \u2014 kontrola prostora.');
+            else if(!target){
+                var rk=parseInt(to[1]);
+                if((playerColor==='w'&&rk>=6)||(playerColor==='b'&&rk<=3))reasons.push('Pe\u0161ak napreduje ka promociji!');
+                // Pawn push: what does it control?
+                var pushDir=playerColor==='w'?-1:1;
+                reasons.push('Gura pe\u0161aka na '+to+'.');
+            }
+        }
+        // Knight to outpost or center
+        if(piece.type==='n'&&fc.r!==backR){
+            if(CENTER.some(function(sq){return sq.r===tc.r&&sq.c===tc.c}))reasons.push('Konj na centralno polje \u2014 maksimalna aktivnost.');
+        }
+        // Queen move
+        if(piece.type==='q'&&!target)reasons.push('Dama na '+to+'.');
+        // King move (not castling)
+        if(piece.type==='k'&&Math.abs(FILES.indexOf(from[0])-FILES.indexOf(to[0]))<=1)reasons.push('Pomeranje kralja na '+to+'.');
+        // Prepares castling check
+        if(piece.type==='b'||piece.type==='n'){
+            var king=null;for(var r2=0;r2<8;r2++)for(var c2=0;c2<8;c2++){var p2=brd[r2][c2];if(p2&&p2.type==='k'&&p2.color===playerColor)king={row:r2,col:c2,sq:c2s(r2,c2)}}
+            if(king){
+                var castled=(playerColor==='w'&&(king.sq==='g1'||king.sq==='c1'))||(playerColor==='b'&&(king.sq==='g8'||king.sq==='c8'));
+                if(!castled&&king.sq===(playerColor==='w'?'e1':'e8'))reasons.push('Priprema rokadu.');
+            }
+        }
+        if(reasons.length===0)reasons.push(pn+' na '+to+'.');
+        return reasons.join(' ');
+    }
+
     // AI Explain
-    var lastSfCandidates=null; // Store last Stockfish analysis for follow-up context
+    var lastSfCandidates=null;
 
     function reqExplain(){
         if(aiLoading)return;
@@ -1526,11 +1598,13 @@
         var bestScore=sfResults[0]?sfResults[0].score:0;
         var lines=[];
         sfResults.forEach(function(r,idx){
-            // Filter out moves that are 150+ centipawns worse than the best
             if(idx>0&&!r.isMate&&Math.abs(r.score-bestScore)>150)return;
             var pvSAN=pvToSAN(r.pv,8);
             var evR=r.isMate?(r.score>0?'+':'-')+'M'+Math.abs(r.score):((r.score>=0?'+':'')+(r.score/100).toFixed(1));
-            if(pvSAN)lines.push({rank:lines.length+1,eval:evR,line:pvSAN,pv:r.pv,score:r.score});
+            // Generate factual explanation from code (always correct)
+            var uci=r.pv.trim().split(/\s+/)[0];
+            var why=getMoveFactualExplanation(uci);
+            if(pvSAN)lines.push({rank:lines.length+1,eval:evR,line:pvSAN,pv:r.pv,score:r.score,why:why});
         });
         return lines;
     }
@@ -1581,7 +1655,7 @@
         if(sfLines.length>0){
             sfBlock='\nStockfish top potezi:\n';
             sfLines.forEach(function(l){
-                sfBlock+=l.rank+'. ('+l.eval+') '+l.line+'\n';
+                sfBlock+=l.rank+'. ('+l.eval+') '+l.line+(l.why?' [CINJENICA: '+l.why+']':'')+'\n';
             });
             sfBlock+='\n';
         }
