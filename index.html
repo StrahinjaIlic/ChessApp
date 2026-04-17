@@ -1523,11 +1523,14 @@
     function _buildSfCandidatesText(sfResults){
         if(!sfResults||sfResults.length===0)return'';
         sfResults.sort(function(a,b){return a.pvIndex-b.pvIndex});
+        var bestScore=sfResults[0]?sfResults[0].score:0;
         var lines=[];
         sfResults.forEach(function(r,idx){
+            // Filter out moves that are 150+ centipawns worse than the best
+            if(idx>0&&!r.isMate&&Math.abs(r.score-bestScore)>150)return;
             var pvSAN=pvToSAN(r.pv,8);
             var evR=r.isMate?(r.score>0?'+':'-')+'M'+Math.abs(r.score):((r.score>=0?'+':'')+(r.score/100).toFixed(1));
-            if(pvSAN)lines.push({rank:idx+1,eval:evR,line:pvSAN,pv:r.pv});
+            if(pvSAN)lines.push({rank:lines.length+1,eval:evR,line:pvSAN,pv:r.pv,score:r.score});
         });
         return lines;
     }
